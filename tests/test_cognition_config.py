@@ -71,14 +71,14 @@ def test_thinking_is_disabled_by_default(configured_settings: Settings) -> None:
 
 
 def test_thinking_budget_is_configurable(configured_settings: Settings) -> None:
-    settings = configured_settings.model_copy(update={"cognition_thinking_budget": 512})
+    settings = configured_settings.model_copy(update={"thinking_budget": 512})
     config = _capture(settings)["config"]
     assert config["thinking_config"] == {"thinking_budget": 512}
 
 
 def test_thinking_config_is_omitted_when_unset(configured_settings: Settings) -> None:
     """None means "don't send the field at all", for a model that rejects it."""
-    settings = configured_settings.model_copy(update={"cognition_thinking_budget": None})
+    settings = configured_settings.model_copy(update={"thinking_budget": None})
     assert "thinking_config" not in _capture(settings)["config"]
 
 
@@ -92,6 +92,6 @@ def test_token_ceiling_leaves_room_to_finish_a_sentence(
 
 def test_default_model_is_not_a_known_retired_pin(configured_settings: Settings) -> None:
     """gemini-2.0-flash and gemini-2.5-flash are both gone; a pin that dies
-    takes the whole interviewer down with it."""
+    takes the whole analyst down with it."""
     model = _capture(configured_settings)["model"]
     assert model not in {"gemini-2.0-flash", "gemini-2.5-flash"}

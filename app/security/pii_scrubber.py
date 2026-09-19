@@ -2,11 +2,11 @@
 
 Threat model
 ------------
-Candidate resumes and live interview transcripts routinely carry national ID
-numbers, contact details and home addresses. Any of it can reach four egress
-boundaries: the LLM provider, the vector store, the telemetry backend, and
-disk. The invariant this module enforces is that **none of those boundaries
-ever sees an unredacted identifier**, and that the enforcement is deterministic
+Scraped candidate records routinely carry national ID numbers, contact
+details and home addresses. Any of it can reach three egress boundaries: the
+model provider, the database, and the dashboard. The invariant this module
+enforces is that **none of those boundaries ever sees an unredacted
+identifier**, and that the enforcement is deterministic
 -- the same input always produces byte-identical output, because a
 probabilistic redactor cannot be audited.
 
@@ -19,8 +19,8 @@ ways that matter at this scale:
    by pass N-1, or across the seam it left behind, producing corrupted output
    that is hard to reason about and impossible to prove correct.
 2. **Lost provenance.** Each ``re.sub`` destroys the mapping between original
-   and redacted offsets, so downstream span annotations (competency evidence
-   spans, diarisation offsets, Langfuse observation ranges) silently drift.
+   and redacted offsets, so any span computed against the original text --
+   an evidence quote, a highlight range -- silently drifts.
 
 Instead we scan the *original* text once with every compiled pattern, resolve
 overlapping candidate matches by a fixed precedence, and splice a single time.
@@ -52,8 +52,8 @@ from typing import Any, Final
 # Replacement tokens
 # =============================================================================
 
-#: Bracketed national-ID tokens are mandated verbatim by the screening spec;
-#: the angle-bracket tokens are the typed generic class. Neither form contains a
+#: Bracketed national-ID tokens name the specific identifier class; the
+#: angle-bracket tokens are the typed generic class. Neither form contains a
 #: digit or an ``@``, which is what makes the scrubber idempotent: no pattern in
 #: this module can match its own output.
 TOKEN_AADHAAR: Final[str] = "[Aadhaar Redacted]"
@@ -137,8 +137,8 @@ def fingerprint(value: str) -> str:
 
     This is what makes redaction *cryptographic* rather than merely lossy. The
     raw value is destroyed, but two occurrences of the same identifier -- the
-    same phone number on two applications, the same Aadhaar across a duplicate
-    submission -- produce the same fingerprint, so duplicates are detectable
+    same phone number on two scraped profiles, the same Aadhaar across a
+    duplicate record -- produce the same fingerprint, so duplicates are detectable
     without anything reversible ever being stored.
 
     Keyed rather than plain: BLAKE2b in keyed mode is a MAC, so without the key
@@ -275,8 +275,14 @@ PATTERNS: Final[tuple[PiiPattern, ...]] = (
     # -- e-mail -------------------------------------------------------------
     PiiPattern(
         kind=PiiKind.EMAIL,
+        # The trailing guard is `(?![\w-])(?!\.\w)` rather than `(?![\w.-])`.
+        # The simpler form treats a sentence-ending period as part of the
+        # domain and rejects the whole match, so "mail me at a@b.com." went
+        # through unredacted -- an under-redaction, and the common case in
+        # scraped free text. `(?!\.\w)` still blocks a partial match inside a
+        # longer domain, which is what the guard was there for.
         regex=re.compile(
-            r"(?<![\w.+-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,63}(?![\w.-])"
+            r"(?<![\w.+-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,63}(?![\w-])(?!\.\w)"
         ),
         token=TOKEN_EMAIL,
         priority=100,
@@ -422,10 +428,10 @@ class OffsetMap:
     """Maps offsets in the original text to offsets in the scrubbed text.
 
     Redaction changes string length, so any span computed against the original
-    (a competency evidence quote, a diarisation range, a Langfuse observation
-    window) needs translation before it can be applied to the scrubbed text.
-    Without this, annotations drift by the cumulative redaction delta and
-    silently point at the wrong words.
+    -- an evidence quote lifted from a record, a highlight range -- needs
+    translation before it can be applied to the scrubbed text. Without this,
+    annotations drift by the cumulative redaction delta and silently point at
+    the wrong words.
     """
 
     #: Start offsets of each redacted span in the ORIGINAL text, ascending.

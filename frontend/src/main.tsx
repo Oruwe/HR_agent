@@ -1,15 +1,12 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import "./styles/tokens.css";
-import "./styles/pages.css";
-import "./styles/admin-theme.css";
+import DashboardPage from "./pages/DashboardPage";
+import "./styles/dashboard.css";
 
+// One surface, one route. There is no candidate-facing app and no router:
+// the product is the manager's dashboard.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <DashboardPage />
   </StrictMode>
 );

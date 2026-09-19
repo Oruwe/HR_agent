@@ -1,13 +1,14 @@
-/** Thin fetch wrapper over the API Gateway. No SDK, no codegen -- the surface
- * is small enough that a typed wrapper by hand stays honest with what the
+/** Thin fetch wrapper over the API. No SDK, no codegen -- the surface is
+ * small enough that a hand-written typed wrapper stays honest with what the
  * backend actually returns (see app/api/schemas.py, the source of truth).
  */
 
 const RUNTIME_ENV = (typeof window !== "undefined" && (window as any).__ENV__) || {};
-const BASE_URL = (RUNTIME_ENV.VITE_API_BASE_URL || (import.meta.env.VITE_API_BASE_URL as string | undefined) || "").replace(
-  /\/$/,
+const BASE_URL = (
+  RUNTIME_ENV.VITE_API_BASE_URL ||
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
   ""
-);
+).replace(/\/$/, "");
 
 export class ApiError extends Error {
   status: number;
@@ -17,6 +18,12 @@ export class ApiError extends Error {
   }
 }
 
+let adminToken = "";
+
+export function setAdminToken(token: string) {
+  adminToken = token;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -24,6 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: {
         Accept: "application/json",
+        ...(adminToken ? { "X-Admin-Token": adminToken } : {}),
         ...(init?.headers || {}),
       },
     });
@@ -44,174 +52,112 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function authHeaders(token: string): HeadersInit {
-  return { Authorization: `Bearer ${token}` };
-}
-
 // ---- Types (mirrors app/api/schemas.py) ------------------------------------
 
-export type EngineeringRole =
-  | "AI_ML_SYSTEMS_ENGINEER"
-  | "BACKEND_DISTRIBUTED_SYSTEMS_ENGINEER"
-  | "FRONTEND_PLATFORM_ENGINEER"
-  | "DEVOPS_SRE_ENGINEER"
-  | "DATA_ENGINEER"
-  | "SECURITY_ENGINEER"
-  | "MOBILE_ENGINEER"
-  | "QA_TEST_AUTOMATION_ENGINEER"
-  | "EMBEDDED_SYSTEMS_ENGINEER";
+export type Verdict = "INTERVIEW" | "MAYBE" | "PASS";
 
-export interface CreateSessionResponse {
-  session_id: string;
-  session_token: string;
-  sanitized_name: string;
-  role: EngineeringRole;
-  redacted: boolean;
-  greeting_text: string;
-  greeting_audio_b64: string | null;
+export interface CandidateSummary {
+  id: string;
+  name: string;
+  headline: string;
+  score: number | null;
+  recommendation: Verdict | string | null;
+  rationale: string | null;
+  imported_at: number;
+  analyzed_at: number | null;
+}
+
+export interface CandidateDetail extends CandidateSummary {
+  source: Record<string, unknown>;
+}
+
+export interface ImportResponse {
+  imported: number;
+  redacted: number;
+  total_in_pool: number;
+}
+
+export interface AnalyzeResponse {
+  analyzed: number;
+  skipped: number;
+  offline: boolean;
+}
+
+export interface ChatMessage {
+  role: "user" | "model";
+  content: string;
+}
+
+export interface CandidateRef {
+  id: string;
+  name: string;
+}
+
+export interface ChatResponse {
+  reply: string;
+  /** How many records the analyst actually read -- not the pool size. */
+  candidates_considered: number;
+  pool_size: number;
+  sources: CandidateRef[];
   retrieval_backend: string;
+  retrieval_ms: number;
 }
 
-export interface TurnResponse {
-  agent_text: string;
-  audio_b64: string | null;
-  turnaround_ms: number;
-  within_budget: boolean;
-  speculation_hit: boolean;
-  turns_completed: number;
-  finished: boolean;
-  stt_used: boolean;
-  stt_provider: string | null;
-}
-
-export interface CompetencyScoreOut {
-  key: string;
-  label: string;
-  score: number;
-  source: string;
-  rationale: string;
-}
-
-export interface EvaluationResponse {
-  candidate_id: string;
-  sanitized_name: string;
-  session_id: string;
-  target_role: EngineeringRole;
-  rubric_fit_index: number;
-  routing_confidence: number;
-  recommendation: string;
-  competency_scores: CompetencyScoreOut[];
-  flagged_limitations: string[];
-  turns_completed: number;
-  latency_compliance: number;
-}
-
-export interface SessionSummary {
-  session_id: string;
-  sanitized_name: string;
-  role: string;
-  status: string;
-  retrieval_backend: string;
-  turns: number;
-  created_at: number;
-  updated_at: number;
-  has_evaluation: boolean;
-  rubric_fit_index: number | null;
-  recommendation: string | null;
-}
-
-export interface TranscriptTurn {
-  speaker: "candidate" | "agent" | string;
-  text: string;
-  offset_ms: number;
-  turnaround_ms: number | null;
-}
-
-export interface LatencyStageOut {
-  stage: string;
-  budget_ms: number;
-  p95_ms: number | null;
-}
-
-export interface SystemStatusResponse {
+export interface StatusResponse {
   environment: string;
   offline: boolean;
-  cognition_configured: boolean;
-  cognition_degraded: boolean;
-  cognition_fallbacks: number;
+  model_configured: boolean;
+  model: string;
+  degraded: boolean;
+  fallbacks: number;
+  candidates: number;
+  analyzed: number;
+  /** "Moss credentials are set" -- not "Moss works". See retrieval_degraded. */
   moss_configured: boolean;
-  qdrant_configured: boolean;
-  transport_configured: boolean;
-  telemetry_configured: boolean;
-  stt_configured: boolean;
-  session_state_backend: string;
-  database_url_scheme: string;
-  active_sessions: number;
-  latency_budget_ms: number;
-  stage_budgets: LatencyStageOut[];
+  retrieval_backend: string;
+  retrieval_degraded: boolean;
+  retrieval_fallbacks: number;
 }
 
-// ---- Candidate-facing calls -------------------------------------------------
+// ---- Calls -------------------------------------------------------------------
 
-export function createSession(resumeText: string, targetRole?: EngineeringRole) {
-  return request<CreateSessionResponse>("/api/sessions", {
+export function listCandidates() {
+  return request<CandidateSummary[]>("/api/candidates");
+}
+
+export function getCandidate(id: string) {
+  return request<CandidateDetail>(`/api/candidates/${id}`);
+}
+
+export function deleteCandidate(id: string) {
+  return request<void>(`/api/candidates/${id}`, { method: "DELETE" });
+}
+
+export function importCandidates(candidates: Record<string, unknown>[]) {
+  return request<ImportResponse>("/api/candidates/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resume_text: resumeText, target_role: targetRole || null }),
+    body: JSON.stringify({ candidates }),
   });
 }
 
-export function postTextTurn(sessionId: string, token: string, text: string) {
-  return request<TurnResponse>(`/api/sessions/${sessionId}/turns/text`, {
+/** Load the bundled demo pool, pre-ranked. Fails with 409 if the pool isn't empty. */
+export function loadDemoPool() {
+  return request<ImportResponse>("/api/candidates/demo", { method: "POST" });
+}
+
+export function analyzePool() {
+  return request<AnalyzeResponse>("/api/analyze", { method: "POST" });
+}
+
+export function askAnalyst(message: string, history: ChatMessage[]) {
+  return request<ChatResponse>("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(token) },
-    body: JSON.stringify({ text }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history }),
   });
 }
 
-export async function postAudioTurn(sessionId: string, token: string, blob: Blob) {
-  const form = new FormData();
-  form.append("file", blob, "answer.webm");
-  return request<TurnResponse>(`/api/sessions/${sessionId}/turns/audio`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: form,
-  });
-}
-
-export function closeSession(sessionId: string, token: string) {
-  return request<EvaluationResponse>(`/api/sessions/${sessionId}/close`, {
-    method: "POST",
-    headers: authHeaders(token),
-  });
-}
-
-export function getEvaluation(sessionId: string) {
-  return request<EvaluationResponse>(`/api/sessions/${sessionId}/evaluation`);
-}
-
-// ---- Admin calls -------------------------------------------------------------
-
-export function listSessions(adminToken?: string) {
-  return request<SessionSummary[]>("/api/admin/sessions", {
-    headers: adminToken ? { "X-Admin-Token": adminToken } : undefined,
-  });
-}
-
-export function getSystemStatus(adminToken?: string) {
-  return request<SystemStatusResponse>("/api/admin/status", {
-    headers: adminToken ? { "X-Admin-Token": adminToken } : undefined,
-  });
-}
-
-export function getAdminEvaluation(sessionId: string, adminToken?: string) {
-  return request<EvaluationResponse>(`/api/admin/sessions/${sessionId}/evaluation`, {
-    headers: adminToken ? { "X-Admin-Token": adminToken } : undefined,
-  });
-}
-
-export function getAdminTranscript(sessionId: string, adminToken?: string) {
-  return request<TranscriptTurn[]>(`/api/admin/sessions/${sessionId}/transcript`, {
-    headers: adminToken ? { "X-Admin-Token": adminToken } : undefined,
-  });
+export function getStatus() {
+  return request<StatusResponse>("/api/status");
 }

@@ -1,11 +1,8 @@
 # =============================================================================
-# hr-talent-evaluator -- API Gateway image (FastAPI + Primary DB + full voice
-# pipeline). Separate from the top-level Dockerfile, which builds the minimal
-# offline-demo/worker image (`python -m app.main demo`) with just the core
-# dependencies. This image installs the full requirements.txt: the API layer,
-# SQLAlchemy/Alembic, and every optional provider (Gemini, Moss, Qdrant,
-# Deepgram, Langfuse) -- all of which still degrade to their offline fallback
-# with no credentials configured, per app/config.py.
+# hr-talent-evaluator -- the API: FastAPI, SQLAlchemy/Alembic, and the Google
+# GenAI client. The model client is the only optional dependency, and the app
+# degrades to its offline analyst rather than failing to boot when no key is
+# configured (see app/agent/cognition.py).
 # =============================================================================
 
 FROM python:3.11-slim AS builder
@@ -30,8 +27,8 @@ RUN python -m venv /opt/venv \
 FROM python:3.11-slim AS runtime
 
 LABEL org.opencontainers.image.title="hr-talent-evaluator-api" \
-      org.opencontainers.image.description="API Gateway: Candidate App + Admin Dashboard backend" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.description="Hiring analyst API: scraped records in, recommendations out" \
+      org.opencontainers.image.version="2.0.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ENV PYTHONUNBUFFERED=1 \
@@ -47,9 +44,8 @@ RUN useradd --create-home --uid 10001 screener \
 COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
-COPY --chown=screener:screener agent.yaml SOUL.md EXPLAINABILITY.md README.md alembic.ini ./
+COPY --chown=screener:screener agent.yaml SOUL.md README.md alembic.ini ./
 COPY --chown=screener:screener app ./app
-COPY --chown=screener:screener scripts ./scripts
 COPY --chown=screener:screener docs ./docs
 
 USER screener
@@ -60,7 +56,6 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)" || exit 1
 
 # Run migrations then start the API. `sh -c` because HEALTHCHECK/CMD need the
-# venv's uvicorn on PATH, and this keeps the release-process migration step
-# (see docs/DEPLOYMENT.md) visible in the container's own startup, not hidden
-# inside app startup code.
+# venv's uvicorn on PATH, and this keeps the migration step visible in the
+# container's own startup rather than hidden inside app startup code.
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.api.app:app --host 0.0.0.0 --port 8000"]
