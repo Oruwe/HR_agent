@@ -1,9 +1,8 @@
 """Fixtures for the FastAPI layer.
 
-Each test gets its own in-memory SQLite database (via a FastAPI dependency
-override on ``get_db``, not by touching the process-wide engine) and a
-freshly reset in-process session store, so tests never see another test's
-sessions and can run safely in any order.
+Each test gets its own in-memory SQLite database via a dependency override on
+``get_db``, rather than by touching the process-wide engine, so tests never
+see another test's candidates and can run in any order.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from sqlalchemy.pool import StaticPool
 @pytest.fixture
 def api_client() -> Iterator[TestClient]:
     from app.api.app import app
-    from app.api.session_store import reset_session_store
     from app.db import models  # noqa: F401  registers tables on Base.metadata
     from app.db.engine import Base, get_db
 
@@ -40,24 +38,22 @@ def api_client() -> Iterator[TestClient]:
         finally:
             db.close()
 
-    reset_session_store()
     app.dependency_overrides[get_db] = _override_get_db
     try:
         with TestClient(app) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
-        reset_session_store()
         engine.dispose()
 
 
 @pytest.fixture
-def create_session(api_client: TestClient):
-    def _create(
-        resume: str = "Backend engineer. Kubernetes, gRPC, Postgres, distributed systems.",
-    ) -> dict:
-        response = api_client.post("/api/sessions", json={"resume_text": resume})
-        assert response.status_code == 201, response.text
-        return response.json()
+def imported(api_client: TestClient):
+    """Import records and return the resulting pool."""
 
-    return _create
+    def _import(records: list[dict]) -> list[dict]:
+        response = api_client.post("/api/candidates/import", json={"candidates": records})
+        assert response.status_code == 201, response.text
+        return api_client.get("/api/candidates").json()
+
+    return _import

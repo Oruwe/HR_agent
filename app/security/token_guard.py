@@ -1,10 +1,11 @@
 """Credential redaction and the egress decorator that enforces both gates.
 
 :mod:`app.security.pii_scrubber` protects the *candidate*. This module protects
-the *operator*: API keys, bearer tokens, LiveKit room grants and private keys
-leak through exactly the same channels (prompt echoes, trace payloads, error
-messages), and a screening transcript is a surprisingly common place to find
-one pasted by accident.
+the *operator*: API keys, bearer tokens, JWTs and private keys leak through
+exactly the same channels (prompt echoes, log payloads, provider error
+messages, which sometimes echo the request URL with the key still in it), and
+a scraped record is a surprisingly common place to find one pasted by
+accident.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ CREDENTIAL_PATTERNS: Final[tuple[Pattern[str], ...]] = (
         r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
         re.DOTALL,
     ),
-    # JSON Web Tokens (LiveKit room grants are JWTs).
+    # JSON Web Tokens.
     re.compile(r"(?<![\w.])eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}(?![\w.])"),
     # Google / Gemini API keys.
     re.compile(r"(?<![\w-])AIza[0-9A-Za-z_\-]{35}(?![\w-])"),
@@ -117,7 +118,7 @@ def guard_egress(boundary: str) -> Callable[[F], F]:
 
     In ``strict`` mode a violation raises. In ``permissive`` mode the payload is
     scrubbed in place and the call proceeds -- appropriate for a staging rollout
-    where a hard failure would take down a live interview, never for production.
+    where a hard failure would take down the running app, never for production.
 
     Works on both sync and async callables.
     """

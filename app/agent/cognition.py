@@ -1,19 +1,17 @@
-"""Streaming LLM interface with tool calling and mid-generation abort.
+"""Streaming model interface, with an offline mock that actually works.
 
-Everything here is built around two constraints the rest of the system imposes:
-
-* **Streaming is mandatory, not an optimisation.** The budget allows 45ms for
-  time-to-first-token. A non-streaming call cannot participate at all, because
-  its first byte arrives only after its last one.
-* **Abort must be immediate.** When a candidate interrupts, the generation they
-  interrupted is worthless. Continuing to stream it wastes tokens and, worse,
-  risks the tail of an abandoned answer being spoken over their new question.
+Two providers behind one protocol: Gemini for real deployments, and a
+deterministic mock for CI, local development and any deployment with no
+credentials. The mock is not a stub that returns an apology -- it produces
+usable rankings and answers, so the whole product is demonstrable with zero
+infrastructure and the test suite needs no network.
 """
 
 from __future__ import annotations
 
-import asyncio
+import json
 import logging
+import re
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -25,49 +23,38 @@ from app.security.token_guard import redact_credentials
 
 logger = logging.getLogger(__name__)
 
-#: How many times a real cognition call has failed and silently handed the
-#: turn to the offline mock. This exists because `cognition_configured` only
-#: means "an API key is set", not "that key works" -- without a counter, an
-#: interview where *every* answer came from the canned fallback is
-#: indistinguishable, in the admin dashboard and in the API, from a healthy
-#: one. A deployment answering every candidate with the same hardcoded
-#: sentence should be impossible to miss.
-_cognition_fallbacks = 0
+#: How many times a live model call has failed and been served by the mock
+#: instead. `model_configured` only means "a key is set", not "that key
+#: works": a deployment whose every call 4xx's looks identical, from the
+#: outside, to a healthy one. It should be impossible to miss, so this is
+#: surfaced through /api/status and the dashboard.
+_fallbacks = 0
 
 
-def record_cognition_fallback() -> None:
-    global _cognition_fallbacks
-    _cognition_fallbacks += 1
+def record_fallback() -> None:
+    global _fallbacks
+    _fallbacks += 1
 
 
-def cognition_fallback_count() -> int:
-    """Number of live cognition calls that fell back since process start."""
-    return _cognition_fallbacks
+def fallback_count() -> int:
+    return _fallbacks
 
 
-def reset_cognition_fallbacks() -> None:
+def reset_fallbacks() -> None:
     """Test isolation only."""
-    global _cognition_fallbacks
-    _cognition_fallbacks = 0
+    global _fallbacks
+    _fallbacks = 0
 
 
 class ChunkType(StrEnum):
     TEXT = "text"
-    TOOL_CALL = "tool_call"
     DONE = "done"
-
-
-@dataclass(frozen=True, slots=True)
-class ToolCall:
-    name: str
-    arguments: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class CognitionChunk:
     type: ChunkType
     text: str = ""
-    tool_call: ToolCall | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,165 +63,110 @@ class Message:
     content: str
 
 
-#: The tool surface exposed to the interviewer model. Deliberately tiny: every
-#: additional tool is another thing the model can spend a turn deciding about,
-#: and this one has 45ms.
-TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
-    {
-        "name": "record_candidate_competency",
-        "description": (
-            "Record an evidence-backed score for one rubric competency after "
-            "the candidate has demonstrated or failed to demonstrate it."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "skill": {"type": "string", "description": "Rubric competency key."},
-                "score": {
-                    "type": "number",
-                    "description": "Demonstrated proficiency from 0.0 to 1.0.",
-                },
-                "rationale": {
-                    "type": "string",
-                    "description": "One sentence citing what the candidate actually said.",
-                },
-            },
-            "required": ["skill", "score", "rationale"],
-        },
-    },
-    {
-        "name": "trigger_role_transition",
-        "description": (
-            "Switch the active rubric when the candidate's evidence clearly "
-            "belongs to a different engineering track."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "next_scenario": {"type": "string", "description": "Target role key."},
-                "reason": {"type": "string"},
-            },
-            "required": ["next_scenario"],
-        },
-    },
-    {
-        "name": "terminate_screening_session",
-        "description": (
-            "End the screening. Use when the rubric is covered, the candidate "
-            "withdraws, or continuing would serve no evaluative purpose."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {"reason": {"type": "string"}},
-            "required": ["reason"],
-        },
-    },
-)
-
-
 @runtime_checkable
 class CognitionProvider(Protocol):
-    """Streaming text generation with tool calls."""
-
-    async def stream(
-        self,
-        system_prompt: str,
-        messages: Sequence[Message],
-        tools: Sequence[dict[str, Any]] = (),
+    def stream(
+        self, system_prompt: str, messages: Sequence[Message]
     ) -> AsyncIterator[CognitionChunk]: ...
 
-    def abort(self) -> None: ...
 
-    @property
-    def aborted(self) -> bool: ...
+_CANDIDATE_ID_RE = re.compile(r"### Candidate id=([\w-]+) \(([^)]*)\)")
 
 
 @dataclass
 class MockCognition:
-    """Deterministic provider for CI, benchmarks and the offline demo.
+    """Deterministic provider. No network, no credentials, still useful.
 
-    Responses are drawn from a scripted queue rather than generated, which is
-    what makes latency tests meaningful: with a real model the measurement is
-    dominated by network variance and tells you nothing about whether *your*
-    pipeline regressed. ``ttft_ms`` models the provider's time-to-first-token so
-    the harness still measures a realistic total.
+    For a ranking request it returns well-formed JSON covering exactly the
+    candidates it was shown, so an offline deployment ranks its pool instead
+    of failing. For a question it answers from the same records. The scoring
+    is a transparent heuristic -- record richness -- and says so, because a
+    number that looks like judgement but isn't is worse than no number.
     """
 
-    ttft_ms: float = 30.0
-    inter_token_ms: float = 0.4
     responses: list[str] = field(default_factory=list)
-    tool_calls: list[ToolCall] = field(default_factory=list)
-    default_response: str = (
-        "Understood. Walk me through the trade-off you made there, and what "
-        "the numbers looked like afterwards."
-    )
     calls: int = field(default=0, init=False)
-    _aborted: bool = field(default=False, init=False)
 
-    @property
-    def aborted(self) -> bool:
-        return self._aborted
+    def _scripted(self) -> str | None:
+        if self.calls <= len(self.responses):
+            return self.responses[self.calls - 1]
+        return None
 
-    def abort(self) -> None:
-        self._aborted = True
+    @staticmethod
+    def _seen_candidates(text: str) -> list[tuple[str, str]]:
+        return _CANDIDATE_ID_RE.findall(text)
+
+    @staticmethod
+    def _blocks(corpus: str) -> list[tuple[str, str, str]]:
+        """Split the rendered pool into (id, name, that candidate's text).
+
+        Splitting on the record separator rather than slicing a fixed window
+        from each match: a window runs into the *next* candidate's record, so
+        every candidate looks equally detailed and the whole pool scores the
+        same.
+        """
+        parts = corpus.split("### Candidate id=")
+        out: list[tuple[str, str, str]] = []
+        for part in parts[1:]:
+            header, _, body = part.partition("\n")
+            candidate_id, _, rest = header.partition(" ")
+            name = rest.strip().strip("()")
+            out.append((candidate_id.strip(), name, body))
+        return out
+
+    def _rank_payload(self, corpus: str) -> str:
+        rankings = []
+        for candidate_id, name, block in self._blocks(corpus):
+            # Richness of the record as a stand-in for fit. Honest, cheap, and
+            # explicitly labelled as offline so nobody mistakes it for judgement.
+            richness = min(1.0, len(block.split()) / 220.0)
+            verdict = "INTERVIEW" if richness > 0.66 else "MAYBE" if richness > 0.33 else "PASS"
+            rankings.append(
+                {
+                    "id": candidate_id,
+                    "score": round(richness, 3),
+                    "verdict": verdict,
+                    "rationale": (
+                        f"Offline analyst: no model is configured, so {name} is scored "
+                        f"by how much detail the scraped record carries, not by fit. "
+                        f"Set GOOGLE_API_KEY for a real assessment."
+                    ),
+                }
+            )
+        return json.dumps({"rankings": rankings})
 
     async def stream(
-        self,
-        system_prompt: str,
-        messages: Sequence[Message],
-        tools: Sequence[dict[str, Any]] = (),
+        self, system_prompt: str, messages: Sequence[Message]
     ) -> AsyncIterator[CognitionChunk]:
-        self._aborted = False
         self.calls += 1
+        scripted = self._scripted()
+        corpus = "\n".join(m.content for m in messages) + "\n" + system_prompt
 
-        text = self.responses.pop(0) if self.responses else self.default_response
-        await asyncio.sleep(self.ttft_ms / 1000.0)
+        if scripted is not None:
+            text = scripted
+        elif '"rankings"' in system_prompt:
+            text = self._rank_payload(corpus)
+        else:
+            names = [name for _, name, _ in self._blocks(corpus)]
+            roster = ", ".join(names[:8]) if names else "no candidates yet"
+            text = (
+                "No model is configured, so I can't analyse the pool for real. "
+                f"I can see {len(names)} candidate(s) imported: {roster}. "
+                "Set GOOGLE_API_KEY to get genuine answers here."
+            )
 
         for word in text.split(" "):
-            if self._aborted:
-                return
             yield CognitionChunk(type=ChunkType.TEXT, text=word + " ")
-            if self.inter_token_ms:
-                await asyncio.sleep(self.inter_token_ms / 1000.0)
-
-        if self.tool_calls and not self._aborted:
-            yield CognitionChunk(type=ChunkType.TOOL_CALL, tool_call=self.tool_calls.pop(0))
-        if not self._aborted:
-            yield CognitionChunk(type=ChunkType.DONE)
+        yield CognitionChunk(type=ChunkType.DONE)
 
 
+@dataclass
 class GeminiCognition:
-    """Google GenAI streaming provider.
+    """Google GenAI streaming provider, degrading to the mock on failure."""
 
-    Two settings do the heavy lifting and are not arbitrary:
-
-    * ``temperature=0.2`` -- an interviewer that rephrases the same probe
-      differently on every run cannot be compared across candidates, which is
-      the whole point of a rubric.
-    * ``max_output_tokens=150`` -- this is a *latency* control as much as a
-      style one. Spoken responses longer than a couple of sentences are both
-      unnatural in conversation and expensive to synthesise.
-
-    Any failure degrades to :class:`MockCognition` rather than dropping the
-    call. A candidate mid-interview should never be abandoned because a
-    provider returned a 503.
-    """
-
-    def __init__(
-        self, settings: Settings | None = None, fallback: CognitionProvider | None = None
-    ) -> None:
-        self.settings = settings or get_settings()
-        self._fallback = fallback or MockCognition()
-        self._aborted = False
-        self._client: Any | None = None
-
-    @property
-    def aborted(self) -> bool:
-        return self._aborted
-
-    def abort(self) -> None:
-        self._aborted = True
-        self._fallback.abort()
+    settings: Settings
+    fallback: MockCognition = field(default_factory=MockCognition)
+    _client: Any | None = field(default=None, init=False)
 
     def _ensure_client(self) -> Any | None:
         if self._client is not None:
@@ -244,105 +176,76 @@ class GeminiCognition:
 
             self._client = genai.Client(api_key=self.settings.google_api_key)
         except Exception as exc:  # pragma: no cover
-            logger.warning("Gemini client unavailable (%s)", type(exc).__name__)
+            logger.warning("Gemini client unavailable (%s: %s)", type(exc).__name__, exc)
             self._client = None
         return self._client
 
     async def stream(
-        self,
-        system_prompt: str,
-        messages: Sequence[Message],
-        tools: Sequence[dict[str, Any]] = (),
+        self, system_prompt: str, messages: Sequence[Message]
     ) -> AsyncIterator[CognitionChunk]:
-        self._aborted = False
-        client = self._ensure_client() if self.settings.cognition_configured else None
+        client = self._ensure_client() if self.settings.model_configured else None
         if client is None:
-            async for chunk in self._fallback.stream(system_prompt, messages, tools):
+            record_fallback()
+            async for chunk in self.fallback.stream(system_prompt, messages):
                 yield chunk
             return
 
-        # Last gate before the payload leaves the process. Transcripts are
-        # already scrubbed upstream, but concatenation is exactly where a
-        # redacted history gets accidentally rebuilt from a raw source.
+        # Last gate before the payload leaves the process.
         safe_system = scrub_text(redact_credentials(system_prompt))
         contents = [{"role": m.role, "parts": [{"text": scrub_text(m.content)}]} for m in messages]
 
-        try:  # pragma: no cover - network path
-            config: dict[str, Any] = {
-                "system_instruction": safe_system,
-                "temperature": self.settings.cognition_temperature,
-                "max_output_tokens": self.settings.cognition_max_tokens,
-            }
-            # Current Gemini flash models reason before answering, and those
-            # thinking tokens come out of max_output_tokens. At this app's
-            # budget that means the model can spend the entire allowance
-            # thinking and return an EMPTY string with finishReason
-            # MAX_TOKENS -- verified against the live API. For a real-time
-            # screening call that is pure downside twice over: the latency of
-            # reasoning, and an interviewer that says nothing. The turn is one
-            # short spoken question, not a puzzle.
-            if self.settings.cognition_thinking_budget is not None:
-                config["thinking_config"] = {
-                    "thinking_budget": self.settings.cognition_thinking_budget
-                }
-            if tools:
-                config["tools"] = [{"function_declarations": list(tools)}]
+        config: dict[str, Any] = {
+            "system_instruction": safe_system,
+            "temperature": self.settings.temperature,
+            "max_output_tokens": self.settings.max_output_tokens,
+        }
+        # Thinking tokens come out of max_output_tokens, so a reasoning model
+        # can spend the whole allowance thinking and return an EMPTY string
+        # with finishReason MAX_TOKENS. Verified against the live API.
+        if self.settings.thinking_budget is not None:
+            config["thinking_config"] = {"thinking_budget": self.settings.thinking_budget}
 
+        try:  # pragma: no cover - network path
             stream = await client.aio.models.generate_content_stream(
-                model=self.settings.cognition_model, contents=contents, config=config
+                model=self.settings.model, contents=contents, config=config
             )
             async for event in stream:
-                if self._aborted:
-                    return
                 for candidate in getattr(event, "candidates", None) or []:
                     for part in getattr(candidate.content, "parts", None) or []:
-                        call = getattr(part, "function_call", None)
-                        if call is not None:
-                            yield CognitionChunk(
-                                type=ChunkType.TOOL_CALL,
-                                tool_call=ToolCall(name=call.name, arguments=dict(call.args or {})),
-                            )
-                        elif getattr(part, "text", None):
+                        if getattr(part, "text", None):
                             yield CognitionChunk(type=ChunkType.TEXT, text=part.text)
-            if not self._aborted:
-                yield CognitionChunk(type=ChunkType.DONE)
+            yield CognitionChunk(type=ChunkType.DONE)
         except Exception as exc:  # pragma: no cover - degradation path
-            record_cognition_fallback()
-            # The exception *message* is the difference between "your key is
-            # wrong" and "that model name doesn't exist" -- logging only the
-            # class name (as this did) makes a total cognition outage look
-            # identical to a transient blip, and leaves an operator with
-            # nothing to act on. Redacted because provider errors sometimes
-            # echo the request URL, key and all.
+            record_fallback()
+            # The message, not just the class name: "ClientError" alone cannot
+            # distinguish a bad key from a retired model name, and both have
+            # happened here. Redacted, because provider errors sometimes echo
+            # the request URL with the key in it.
             logger.warning(
-                "Gemini stream failed (%s: %s); continuing the interview on the "
-                "fallback provider. Every answer from here is the canned offline "
-                "response, not a real one.",
+                "Gemini call failed (%s: %s); answering from the offline mock instead.",
                 type(exc).__name__,
                 redact_credentials(str(exc))[:500],
             )
-            async for chunk in self._fallback.stream(system_prompt, messages, tools):
+            async for chunk in self.fallback.stream(system_prompt, messages):
                 yield chunk
 
 
 def build_cognition(settings: Settings | None = None) -> CognitionProvider:
     settings = settings or get_settings()
-    if settings.cognition_configured:
+    if settings.model_configured:
         return GeminiCognition(settings)
     return MockCognition()
 
 
 __all__ = [
-    "TOOL_SCHEMAS",
     "ChunkType",
     "CognitionChunk",
     "CognitionProvider",
     "GeminiCognition",
     "Message",
     "MockCognition",
-    "ToolCall",
     "build_cognition",
-    "cognition_fallback_count",
-    "record_cognition_fallback",
-    "reset_cognition_fallbacks",
+    "fallback_count",
+    "record_fallback",
+    "reset_fallbacks",
 ]

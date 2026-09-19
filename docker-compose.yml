@@ -1,16 +1,12 @@
 # =============================================================================
 # Full stack, one command: `docker compose up --build`.
 #
-# Default profile: API Gateway (SQLite, on a named volume) + frontend. Zero
-# external services required, matching the rest of this project's "works with
-# nothing configured" philosophy -- everything else (LLM, Moss, STT,
-# telemetry) runs in its offline/mock mode until real credentials are set in
-# .env.
+# Default profile: the API (SQLite on a named volume) plus the dashboard.
+# No external services required -- with no GOOGLE_API_KEY set the analyst
+# runs in its offline mode, which is a working product rather than an error
+# page.
 #
 # `--profile postgres` swaps SQLite for a real Postgres container.
-# `--profile redis` adds the optional Session State mirror.
-# Both are opt-in, not required: app/api/session_store.py and app/db/engine.py
-# already degrade cleanly without them.
 # =============================================================================
 
 services:
@@ -23,17 +19,11 @@ services:
     environment:
       HRTE_ENV: production
       DATABASE_URL: ${DATABASE_URL:-}
-      REDIS_URL: ${REDIS_URL:-}
       HRTE_CORS_ORIGINS: ${HRTE_CORS_ORIGINS:-http://localhost:5173}
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      MOSS_PROJECT_ID: ${MOSS_PROJECT_ID:-}
-      MOSS_PROJECT_KEY: ${MOSS_PROJECT_KEY:-}
-      QDRANT_URL: ${QDRANT_URL:-}
-      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       HRTE_ADMIN_TOKEN: ${HRTE_ADMIN_TOKEN:-}
+      HRTE_REDACTION_KEY: ${HRTE_REDACTION_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      HRTE_MODEL: ${HRTE_MODEL:-gemini-flash-latest}
     volumes:
       - api-data:/data
     healthcheck:
@@ -68,16 +58,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hrte"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Opt-in: `docker compose --profile redis up`
-  redis:
-    image: redis:7-alpine
-    profiles: ["redis"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

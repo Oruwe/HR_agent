@@ -4,7 +4,8 @@ Structure of this file mirrors the threat model rather than the code:
 
 1. every identifier class is caught;
 2. nothing is caught that should not be (the false-positive corpus -- a
-   scrubber that eats "p99 under 45ms" destroys the evidence the rubric scores);
+   scrubber that eats "p99 under 45ms" destroys the evidence the ranking
+   is built on);
 3. the transform has the algebraic properties the rest of the system relies on
    (deterministic, idempotent, total, offset-traceable);
 4. the enforcement gates actually raise.
@@ -92,6 +93,36 @@ def test_no_original_digits_survive(label: str, text: str, token: str) -> None:
         assert original not in result.text, f"{label}: {finding.kind.value} survived redaction"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Reach them at priya.raman@example.com.",
+        "Mail a@b.co.uk.",
+        "Two of them: a@b.com, then c@d.org.",
+        "(a@b.com)",
+        "a@b.com</p>",
+    ],
+)
+def test_email_is_redacted_at_the_end_of_a_sentence(text: str) -> None:
+    """Regression: the trailing guard read a sentence-ending period as part
+    of the domain and rejected the match, so these went through in the clear.
+    Scraped records are free text, so this was the common case, not an edge."""
+    assert "@" not in scrub_text(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Mail a@b.co.uk today", "<EMAIL_REDACTED>"),
+        ("Mail a@b.co.uk.", "<EMAIL_REDACTED>."),
+    ],
+)
+def test_multi_label_domains_are_redacted_whole(text: str, expected: str) -> None:
+    """The guard's actual job: never leave `.uk` dangling after `a@b.co`."""
+    assert expected in scrub_text(text)
+    assert ".uk" not in scrub_text(text)
+
+
 def test_planted_resume_is_fully_scrubbed(pii_resume: str) -> None:
     result = scrub(pii_resume)
     kinds = {f.kind for f in result.findings}
@@ -121,7 +152,7 @@ def test_international_identifiers(international_pii: str) -> None:
 
 
 def test_technical_content_survives_intact(pii_resume: str) -> None:
-    """Redaction must not destroy the evidence the rubric scores."""
+    """Redaction must not destroy the evidence the ranking is built on."""
     scrubbed = scrub_text(pii_resume)
     for phrase in ("FSDP", "512 A100s", "34 percent", "Triton kernels", "HNSW", "p99"):
         assert phrase in scrubbed, f"scrubbing destroyed technical evidence: {phrase}"
@@ -325,8 +356,8 @@ def test_every_finding_carries_a_fingerprint(pii_resume: str) -> None:
 
 def test_assert_zero_pii_raises_on_dirty_text() -> None:
     with pytest.raises(SecurityBreachException) as excinfo:
-        assert_zero_pii("Call 9876543210", boundary="qdrant")
-    assert excinfo.value.boundary == "qdrant"
+        assert_zero_pii("Call 9876543210", boundary="model_prompt")
+    assert excinfo.value.boundary == "model_prompt"
     assert PiiKind.PHONE in excinfo.value.kinds
 
 

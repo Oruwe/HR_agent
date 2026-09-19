@@ -1,0 +1,823 @@
+/* Manager dashboard: white and purple, three columns, dense.
+ *
+ * Layout is mobile-first -- the columns stack as a plain flex column and only
+ * become a grid at >=1100px. A grid with one `1fr` row and three children
+ * silently overlaps them on narrow screens, which is how the previous version
+ * broke.
+ */
+
+:root {
+  --purple-50: #faf7ff;
+  --purple-100: #f2ebff;
+  --purple-200: #e3d6fe;
+  --purple-300: #c9b0fc;
+  --purple-500: #7c3aed;
+  --purple-600: #6d28d9;
+  --purple-700: #5b21b6;
+
+  --ink-900: #1a1327;
+  --ink-700: #3f3352;
+  --ink-500: #6b6280;
+  --ink-400: #8e86a3;
+
+  --line: #ebe6f4;
+  --surface: #ffffff;
+  --canvas: #f7f5fb;
+
+  --green-500: #16a34a;
+  --green-100: #dcfce7;
+  --amber-500: #d97706;
+  --amber-100: #fef3c7;
+  --slate-500: #64748b;
+  --slate-100: #f1f5f9;
+
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(26, 19, 39, 0.05), 0 8px 24px rgba(26, 19, 39, 0.04);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink-900);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Buttons inherit a platform border and background otherwise, which shows up
+ * as stray dark outlines on the chips and suggestions. */
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 650;
+}
+
+/* ---- Shell ---------------------------------------------------------------- */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--purple-500), var(--purple-700));
+}
+
+.brand-name {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.brand-sub {
+  font-size: 12px;
+  color: var(--ink-400);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.pill-ok {
+  background: var(--purple-100);
+  color: var(--purple-700);
+}
+
+.pill-mute {
+  background: var(--slate-100);
+  color: var(--slate-500);
+}
+
+.pill-alert {
+  background: var(--amber-100);
+  color: var(--amber-500);
+}
+
+.token-input,
+.search,
+.chat-input input,
+.import-text {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  outline: none;
+}
+
+.token-input {
+  width: 150px;
+}
+
+.token-input:focus,
+.search:focus,
+.chat-input input:focus,
+.import-text:focus {
+  border-color: var(--purple-300);
+  box-shadow: 0 0 0 3px var(--purple-100);
+}
+
+.error-banner,
+.busy-banner {
+  padding: 9px 20px;
+  font-size: 13px;
+}
+
+.error-banner {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-bottom: 1px solid #fecaca;
+}
+
+.busy-banner {
+  background: var(--purple-50);
+  color: var(--purple-700);
+  border-bottom: 1px solid var(--purple-200);
+}
+
+/* ---- Columns -------------------------------------------------------------- */
+
+.columns {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.col-left,
+.col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.col-center {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Desktop: the shell owns the viewport height and each column scrolls inside
+ * its own track, so the chat panel and the pool stats stay put while the
+ * candidate list moves.
+ *
+ * `min-height: 0` on the grid and on every column is load-bearing. A grid
+ * item's default `min-height: auto` resolves to its content height, which
+ * makes `overflow-y: auto` a no-op and pushes the scroll onto the document
+ * instead -- the columns then scroll away with the page. */
+@media (min-width: 1100px) {
+  .shell {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: 270px minmax(0, 1fr) 380px;
+    gap: 16px;
+    min-height: 0;
+  }
+
+  .col-left,
+  .col-center,
+  .col-right {
+    min-height: 0;
+  }
+
+  .col-left,
+  .col-center {
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+
+/* ---- Cards (left rail) ---------------------------------------------------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.card-muted {
+  background: var(--purple-50);
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stat {
+  padding: 10px 12px;
+  background: var(--purple-50);
+  border-radius: 10px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--purple-700);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+.dist-bar {
+  display: flex;
+  height: 8px;
+  gap: 2px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dist-bar > span {
+  display: block;
+  min-width: 0;
+}
+
+.dist-interview {
+  background: var(--green-500);
+}
+.dist-maybe {
+  background: var(--amber-500);
+}
+.dist-pass {
+  background: var(--slate-500);
+}
+.dist-none {
+  background: var(--line);
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--ink-700);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend b {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dot-interview {
+  background: var(--green-500);
+}
+.dot-maybe {
+  background: var(--amber-500);
+}
+.dot-pass {
+  background: var(--slate-500);
+}
+.dot-none {
+  background: var(--line);
+}
+
+.btn {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  font-weight: 550;
+  font-size: 13px;
+  text-align: center;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--purple-300);
+  background: var(--purple-50);
+}
+
+.btn-primary {
+  border-color: transparent;
+  background: var(--purple-500);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--purple-600);
+  border-color: transparent;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-text {
+  resize: vertical;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-400);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--ink-700);
+}
+
+.chip:hover {
+  border-color: var(--purple-300);
+}
+
+.chip-active {
+  background: var(--purple-500);
+  border-color: var(--purple-500);
+  color: #fff;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.kv dt {
+  color: var(--ink-400);
+}
+
+.kv dd {
+  margin: 0;
+  text-align: right;
+  color: var(--ink-700);
+  overflow-wrap: anywhere;
+}
+
+.alert-text {
+  color: var(--amber-500);
+}
+
+/* ---- Centre column -------------------------------------------------------- */
+
+.center-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.center-head h1 {
+  font-size: 19px;
+  letter-spacing: -0.015em;
+}
+
+.muted {
+  color: var(--ink-400);
+  font-size: 12.5px;
+}
+
+.small {
+  font-size: 11.5px;
+}
+
+.empty {
+  padding: 28px;
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--ink-500);
+}
+
+.empty code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--purple-50);
+  color: var(--purple-700);
+  font-size: 12px;
+}
+
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.candidate-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.candidate-card:hover {
+  border-color: var(--purple-300);
+  transform: translateY(-1px);
+}
+
+.rank {
+  flex: none;
+  width: 20px;
+  padding-top: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--purple-100);
+  color: var(--purple-700);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.candidate-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.candidate-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.candidate-head h2 {
+  font-size: 14.5px;
+}
+
+.candidate-role {
+  font-size: 12.5px;
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verdict {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.verdict-interview {
+  background: var(--green-100);
+  color: var(--green-500);
+}
+.verdict-maybe {
+  background: var(--amber-100);
+  color: var(--amber-500);
+}
+.verdict-pass {
+  background: var(--slate-100);
+  color: var(--slate-500);
+}
+.verdict-none {
+  background: var(--line);
+  color: var(--ink-400);
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--canvas);
+  overflow: hidden;
+}
+
+.score-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--purple-500);
+  transition: width 0.3s ease;
+}
+
+.verdict-interview-fill {
+  background: var(--green-500);
+}
+.verdict-maybe-fill {
+  background: var(--amber-500);
+}
+.verdict-pass-fill {
+  background: var(--slate-500);
+}
+.verdict-none-fill {
+  background: var(--line);
+}
+
+.score-num {
+  flex: none;
+  width: 26px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-700);
+}
+
+.rationale {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-700);
+}
+
+/* ---- Right column: the analyst -------------------------------------------- */
+
+.col-right {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  gap: 0;
+}
+
+.chat-head {
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-log {
+  flex: 1;
+  min-height: 220px;
+  overflow-y: auto;
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-intro {
+  color: var(--ink-500);
+  font-size: 13px;
+}
+
+.chat-intro p {
+  margin: 0 0 10px;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.suggestion {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--purple-50);
+  color: var(--purple-700);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.suggestion:hover {
+  border-color: var(--purple-300);
+  background: var(--purple-100);
+}
+
+.bubble-row {
+  display: flex;
+}
+
+.bubble-row.user {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 9px 12px;
+  border-radius: 13px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble-row.user .bubble {
+  background: var(--purple-500);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.bubble-row.model .bubble {
+  background: var(--purple-50);
+  color: var(--ink-900);
+  border: 1px solid var(--purple-100);
+  border-bottom-left-radius: 4px;
+}
+
+.bubble-thinking {
+  color: var(--ink-400);
+  font-style: italic;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px 15px;
+  border-top: 1px solid var(--line);
+}
+
+.chat-input input {
+  flex: 1;
+}
+
+/* ---- Record modal --------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(26, 19, 39, 0.45);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(680px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--surface);
+  border-radius: 14px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-head h2 {
+  font-size: 18px;
+}
+
+.modal-rationale {
+  margin: 0;
+  padding: 11px 13px;
+  background: var(--purple-50);
+  border-left: 3px solid var(--purple-500);
+  border-radius: 0 8px 8px 0;
+  font-size: 13px;
+}
+
+.record {
+  margin: 0;
+  padding: 13px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

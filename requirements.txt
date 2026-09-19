@@ -1,46 +1,27 @@
-# ---- Core runtime (always required) -----------------------------------------
-pydantic>=2.6,<3
-PyYAML>=6.0,<7
-numpy>=1.26,<3
-
-# ---- Real-time transport + audio DSP ----------------------------------------
-livekit>=0.17
-livekit-api>=0.7
-livekit-agents>=0.11
-onnxruntime>=1.17          # Silero VAD v5 execution provider (CPU, ~1ms/frame)
-
-# ---- Retrieval: Moss runtime on the hot path (sub-10ms, no vector DB) -------
-moss>=0.1
-
-# ---- Cognition + cold-archive vector store ----------------------------------
-google-genai>=0.3
-qdrant-client>=1.9
-
-# ---- Observability ----------------------------------------------------------
-langfuse>=2.36
-opentelemetry-sdk>=1.24
-opentelemetry-exporter-otlp>=1.24
-prometheus-client>=0.20
-
-# ---- API Gateway (Candidate App + Admin Dashboard backend) ------------------
+# ---- The API ----------------------------------------------------------------
 fastapi>=0.111
 uvicorn[standard]>=0.29
-python-multipart>=0.0.9   # multipart audio uploads
-httpx>=0.27                # Deepgram STT client + FastAPI TestClient in tests
-httpx2>=2.13,<3
-anyio>=4.6,<4.15           # already implied by livekit-agents; explicit for stt/synthesis paths
-websockets>=12.0           # already implied by livekit-agents; explicit for stt/synthesis paths
+pydantic>=2.6,<3
 prometheus-client>=0.20
 
-# ---- Persistence: Primary DB + migrations -----------------------------------
+# ---- The analyst ------------------------------------------------------------
+# The one optional runtime dependency: with no GOOGLE_API_KEY the app never
+# constructs a client and serves from the offline mock instead.
+google-genai>=0.3
+
+# ---- Persistence ------------------------------------------------------------
 sqlalchemy>=2.0
 alembic>=1.13
-psycopg2-binary>=2.9       # Postgres driver for production DATABASE_URL; SQLite needs nothing extra
+psycopg2-binary>=2.9       # Postgres driver for production DATABASE_URL;
+                           # SQLite needs nothing extra
 
-# ---- Session State (optional; degrades to in-process without a server) -----
-redis>=5.0
+# ---- HTTP client ------------------------------------------------------------
+# Required by fastapi.testclient. httpx2/anyio are pinned because newer
+# starlette resolves its TestClient transport through them.
+httpx>=0.27
+httpx2>=2.13,<3
+anyio>=4.6
 
 # ---- Test + lint ------------------------------------------------------------
 pytest>=8.0
-pytest-asyncio>=0.23
 ruff>=0.4

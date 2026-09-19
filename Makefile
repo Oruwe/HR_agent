@@ -1,56 +1,50 @@
-.PHONY: help install demo verify bench test lint docker clean \
-        api api-install migrate frontend frontend-install frontend-test \
-        docker-up docker-down
+.PHONY: help install seed verify export test lint format \
+        api migrate frontend frontend-install frontend-test \
+        docker docker-up docker-down clean
 
 help:
-	@echo "hr-talent-evaluator"
+	@echo "hr-talent-evaluator -- scraped candidate records in, hiring recommendations out"
 	@echo ""
-	@echo "  Offline agent / worker"
-	@echo "  make install          Install core dependencies (no services required)"
-	@echo "  make demo             Run a full offline screening interview"
-	@echo "  make verify           OpenGAP / latency budget / security compliance report"
-	@echo "  make bench            Reproduce the latency benchmark"
-	@echo "  make test             Full backend test suite (warnings are errors)"
-	@echo "  make lint             Ruff lint"
-	@echo "  make docker           Build the production worker/demo image"
+	@echo "  Quick start"
+	@echo "  make install          Install backend dependencies"
+	@echo "  make seed             Load and rank the 9-candidate demo pool"
+	@echo "  make api              Run the API on :8000"
+	@echo "  make frontend         Run the dashboard on :5173"
 	@echo ""
-	@echo "  API Gateway"
-	@echo "  make api-install      Install full API + DB + STT dependencies"
-	@echo "  make migrate          Apply Alembic migrations (creates ./data/app.db by default)"
-	@echo "  make api              Run the API Gateway locally on :8000"
+	@echo "  Checks"
+	@echo "  make verify           Configuration + PII scrubber report"
+	@echo "  make test             Backend test suite (warnings are errors)"
+	@echo "  make lint             Ruff lint + format check"
+	@echo "  make format           Ruff autofix + format"
+	@echo "  make frontend-test    Frontend unit tests"
 	@echo ""
-	@echo "  Frontend (Candidate App + Admin Dashboard)"
-	@echo "  make frontend-install Install frontend dependencies"
-	@echo "  make frontend         Run the frontend dev server on :5173"
-	@echo "  make frontend-test    Run frontend unit tests"
-	@echo ""
-	@echo "  Full stack via Docker Compose"
-	@echo "  make docker-up        Build + start API and frontend (docker compose up --build)"
-	@echo "  make docker-down      Stop the stack"
+	@echo "  Other"
+	@echo "  make export           Print the demo pool as import-ready JSON"
+	@echo "  make migrate          Apply Alembic migrations"
+	@echo "  make docker-up        Build + start the full stack"
 
 install:
-	pip install "pydantic>=2.6" "PyYAML>=6.0" "numpy>=1.26" "pytest>=8" ruff
+	pip install -r requirements.txt
 
-demo:
-	python -m app.main demo
+seed:
+	python -m app.main seed
 
 verify:
 	python -m app.main verify
 
-bench:
-	python scripts/benchmark.py --iterations 60
+export:
+	python -m app.main export
 
 test:
 	pytest -q
 
 lint:
-	ruff check app tests scripts
+	ruff check app tests
+	ruff format --check app tests
 
-docker:
-	docker build -t hr-talent-evaluator:1.0.0 .
-
-api-install:
-	pip install -r requirements.txt
+format:
+	ruff check --fix app tests
+	ruff format app tests
 
 migrate:
 	alembic upgrade head
@@ -67,6 +61,9 @@ frontend:
 frontend-test:
 	cd frontend && npm run test
 
+docker:
+	docker build -f Dockerfile.api -t hr-talent-evaluator-api:2.0.0 .
+
 docker-up:
 	docker compose up --build
 
@@ -75,4 +72,4 @@ docker-down:
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
-	rm -rf .pytest_cache .ruff_cache *.egg-info
+	rm -rf .pytest_cache .ruff_cache *.egg-info data
