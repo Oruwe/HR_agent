@@ -5,7 +5,7 @@
 #
 # 1. The Moss retrieval runtime ships *inside* this image. There is no retrieval
 #    tier to deploy alongside it and no vector database to operate, which is
-#    what makes the 10ms retrieval budget a property of the process rather than
+#    what makes the 5ms retrieval budget a property of the process rather than
 #    of somebody's network.
 # 2. The default command is the offline demo. An image that does something
 #    useful with no credentials is an image people actually run.
@@ -31,7 +31,7 @@ RUN python -m venv /opt/venv \
 FROM python:3.11-slim AS runtime
 
 LABEL org.opencontainers.image.title="hr-talent-evaluator" \
-      org.opencontainers.image.description="Sub-160ms voice HR screening agent with Moss retrieval" \
+      org.opencontainers.image.description="Sub-150ms voice HR screening agent with Moss retrieval" \
       org.opencontainers.image.version="1.0.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
