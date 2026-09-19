@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator, Sequence
 
 from app.agent.cognition import MockCognition, ToolCall, build_cognition
 from app.agent.orchestrator import ScreeningOrchestrator, new_session
-from app.config import TOTAL_TURNAROUND_BUDGET_MS, STAGE_BUDGETS_MS, Settings, Stage, get_settings
+from app.config import STAGE_BUDGETS_MS, TOTAL_TURNAROUND_BUDGET_MS, Settings, Stage, get_settings
 from app.schemas.roles import ROLE_RUBRICS, EngineeringRole
 from app.security.pii_scrubber import scrub
 from app.telemetry.metrics import budget_table
@@ -242,7 +242,7 @@ def run_verify(settings: Settings) -> int:
     for stage in Stage:
         print(f"  {stage.value:<22} {STAGE_BUDGETS_MS[stage]:>6.1f} ms")
     print(f"  {'TOTAL':<22} {total:>6.1f} ms  [{'PASS' if total == TOTAL_TURNAROUND_BUDGET_MS else 'FAIL'}]")
-    ok &= total == 160.0
+    ok &= total == TOTAL_TURNAROUND_BUDGET_MS
 
     _print_header("ROLE RUBRICS")
     for role in EngineeringRole:
