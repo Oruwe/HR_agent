@@ -170,9 +170,18 @@ class Settings(BaseModel):
     #: model has room to vary its phrasing turn to turn without touching
     #: anything that has to be reproducible or auditable.
     cognition_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    #: Matches the value .env.example has documented; the previous 48-token
-    #: default silently clipped every response to a single terse fragment.
-    cognition_max_tokens: int = Field(default=150, gt=0)
+    #: 150 (what .env.example documented, against a code default of 48) still
+    #: truncated mid-sentence against the live API -- "Which specific NCCL
+    #: environment variables" and then nothing. 250 leaves the model room to
+    #: finish its own sentence; it stops naturally well before the cap, so
+    #: this is a ceiling, not a target.
+    cognition_max_tokens: int = Field(default=250, gt=0)
+    #: Thinking tokens are billed out of max_output_tokens, so a reasoning
+    #: model can burn the whole allowance before emitting a single visible
+    #: character. 0 disables it, which is right for a real-time interview:
+    #: the turn is one short spoken question. None omits the setting
+    #: entirely, for a model that rejects it.
+    cognition_thinking_budget: int | None = Field(default=0, ge=0)
     fast_path: bool = True
 
     # -- synthesis ------------------------------------------------------------
@@ -278,7 +287,8 @@ def load_settings() -> Settings:
         google_api_key=_env("GOOGLE_API_KEY"),
         cognition_model=_env("HRTE_COGNITION_MODEL", "gemini-flash-latest"),
         cognition_temperature=_env_float("HRTE_COGNITION_TEMPERATURE", 0.7),
-        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 150),
+        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 250),
+        cognition_thinking_budget=_env_int("HRTE_COGNITION_THINKING_BUDGET", 0),
         fast_path=_env("HRTE_FAST_PATH", "true").lower() not in {"0", "false", "no"},
         speech_engine=SpeechEngine(_env("HRTE_SPEECH_ENGINE", "mock") or "mock"),
         speech_ws_url=_env("HRTE_SPEECH_WS_URL"),

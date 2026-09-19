@@ -273,6 +273,18 @@ class GeminiCognition:
                 "temperature": self.settings.cognition_temperature,
                 "max_output_tokens": self.settings.cognition_max_tokens,
             }
+            # Current Gemini flash models reason before answering, and those
+            # thinking tokens come out of max_output_tokens. At this app's
+            # budget that means the model can spend the entire allowance
+            # thinking and return an EMPTY string with finishReason
+            # MAX_TOKENS -- verified against the live API. For a real-time
+            # screening call that is pure downside twice over: the latency of
+            # reasoning, and an interviewer that says nothing. The turn is one
+            # short spoken question, not a puzzle.
+            if self.settings.cognition_thinking_budget is not None:
+                config["thinking_config"] = {
+                    "thinking_budget": self.settings.cognition_thinking_budget
+                }
             if tools:
                 config["tools"] = [{"function_declarations": list(tools)}]
 
