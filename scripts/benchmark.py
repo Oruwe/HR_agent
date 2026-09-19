@@ -137,8 +137,10 @@ async def main(iterations: int) -> int:
     print(_row("without (sequential baseline)", cold, TOTAL_TURNAROUND_BUDGET_MS))
 
     saved = statistics.median(cold) - statistics.median(speculated)
-    print(f"\n  Speculation saves a median of {saved:.1f} ms per turn "
-          f"({saved / max(statistics.median(cold), 1e-9):.0%} of the sequential cost).")
+    print(
+        f"\n  Speculation saves a median of {saved:.1f} ms per turn "
+        f"({saved / max(statistics.median(cold), 1e-9):.0%} of the sequential cost)."
+    )
 
     _header("DECLARED STAGE BUDGET")
     for stage in Stage:
