@@ -270,3 +270,56 @@ def test_health_is_reachable_without_a_token(
     """A gated health check makes the platform mark a healthy service down."""
     monkeypatch.setenv("HRTE_ADMIN_TOKEN", "s3cret")
     assert api_client.get("/health").status_code == 200
+
+
+# ---- Retrieval --------------------------------------------------------------
+
+
+def test_chat_reports_what_it_read(api_client: TestClient, imported) -> None:
+    imported(RECORDS)
+    body = api_client.post("/api/chat", json={"message": "who works on ML systems?"}).json()
+    assert body["pool_size"] == 2
+    assert body["candidates_considered"] >= 1
+    assert body["retrieval_backend"]
+    assert [s["name"] for s in body["sources"]]
+
+
+def test_chat_retrieves_the_relevant_candidate(api_client: TestClient, imported) -> None:
+    imported(RECORDS)
+    body = api_client.post("/api/chat", json={"message": "who trained on A100s?"}).json()
+    assert [s["name"] for s in body["sources"]] == ["Priya Raman"]
+    assert body["candidates_considered"] == 1
+
+
+def test_a_deleted_candidate_stops_being_retrievable(api_client: TestClient, imported) -> None:
+    """The pool is the source of truth. A candidate the manager removed must
+    not come back in an answer."""
+    rows = imported(RECORDS)
+    priya = next(r for r in rows if r["name"] == "Priya Raman")
+    assert api_client.delete(f"/api/candidates/{priya['id']}").status_code == 204
+
+    body = api_client.post("/api/chat", json={"message": "who trained on A100s?"}).json()
+    assert "Priya Raman" not in [s["name"] for s in body["sources"]]
+
+
+def test_status_reports_the_retrieval_backend(api_client: TestClient) -> None:
+    body = api_client.get("/api/status").json()
+    assert body["moss_configured"] is False
+    assert "local" in body["retrieval_backend"]
+    assert body["retrieval_degraded"] is False
+
+
+def test_status_reports_moss_when_configured(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.routes_candidates import reset_index
+    from app.config import reset_settings
+
+    monkeypatch.setenv("MOSS_PROJECT_ID", "p")
+    monkeypatch.setenv("MOSS_PROJECT_KEY", "k")
+    reset_settings()
+    reset_index()
+
+    body = api_client.get("/api/status").json()
+    assert body["moss_configured"] is True
+    assert "moss" in body["retrieval_backend"]

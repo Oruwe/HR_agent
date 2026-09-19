@@ -68,6 +68,21 @@ class Settings(BaseModel):
     #: model that rejects it.
     thinking_budget: int | None = Field(default=0, ge=0)
 
+    # -- retrieval (Moss) -----------------------------------------------------
+    #: Moss is a semantic search runtime (https://usemoss.dev). It backs the
+    #: analyst's retrieval: a manager's question is matched against the pool
+    #: and only the relevant records are put in front of the model, instead of
+    #: every record in the database.
+    #:
+    #: Both values are needed. With either missing the local index is used,
+    #: which is lexical rather than semantic -- a real fallback, but a weaker
+    #: one, and /api/status says which is in play.
+    moss_project_id: str = ""
+    moss_project_key: str = ""
+    moss_index: str = "candidate_pool"
+    #: How many candidate records a retrieved answer is allowed to read.
+    retrieval_top_k: int = Field(default=12, gt=0)
+
     # -- storage / transport --------------------------------------------------
     database_url: str = ""
     cors_origins: str = "*"
@@ -84,6 +99,12 @@ class Settings(BaseModel):
     def offline(self) -> bool:
         return not self.model_configured
 
+    @property
+    def moss_configured(self) -> bool:
+        """True when Moss *can* be reached. Not a claim that it works --
+        see the retrieval backend reported by /api/status for that."""
+        return bool(self.moss_project_id and self.moss_project_key)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
@@ -95,6 +116,10 @@ def get_settings() -> Settings:
         temperature=_env_float("HRTE_TEMPERATURE", 0.4),
         max_output_tokens=_env_int("HRTE_MAX_OUTPUT_TOKENS", 2048),
         thinking_budget=_env_int("HRTE_THINKING_BUDGET", 0),
+        moss_project_id=_env("MOSS_PROJECT_ID"),
+        moss_project_key=_env("MOSS_PROJECT_KEY"),
+        moss_index=_env("HRTE_MOSS_INDEX", "candidate_pool"),
+        retrieval_top_k=_env_int("HRTE_RETRIEVAL_TOP_K", 12),
         database_url=_env("DATABASE_URL"),
         cors_origins=_env("HRTE_CORS_ORIGINS", "*"),
         pii_mode=PiiMode(_env("HRTE_PII_MODE", "strict") or "strict"),

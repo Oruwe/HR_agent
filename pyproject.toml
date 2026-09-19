@@ -26,6 +26,11 @@ dependencies = [
 analyst = [
   "google-genai>=0.3",
 ]
+# Semantic retrieval over the pool. Without it the local lexical index is
+# used, which works and says so.
+retrieval = [
+  "moss>=1.12",
+]
 # Postgres. SQLite needs nothing extra.
 postgres = [
   "psycopg2-binary>=2.9",
@@ -38,7 +43,7 @@ dev = [
   "ruff>=0.4",
 ]
 all = [
-  "hr-talent-evaluator[analyst,postgres,dev]",
+  "hr-talent-evaluator[analyst,retrieval,postgres,dev]",
 ]
 
 [project.scripts]

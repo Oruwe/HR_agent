@@ -28,6 +28,7 @@ from app.api.routes_health import (
 from app.api.schemas import (
     AnalyzeResponse,
     CandidateDetail,
+    CandidateRef,
     CandidateSummary,
     ChatRequest,
     ChatResponse,
@@ -40,6 +41,7 @@ from app.db.engine import get_db
 from app.db.models import Candidate
 from app.demo_pool import DEMO_BASELINE, DEMO_CANDIDATES
 from app.ingest import build_candidate
+from app.retrieval import build_pool_index, retrieval_fallback_count
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,23 @@ router = APIRouter(prefix="/api", tags=["candidates"])
 #: strategy.
 POOL_LIMIT = 200
 
+#: One index for the process. Moss holds a remote index and a loaded handle;
+#: building that per request would re-create and re-load it on every question.
+_INDEX = None
+
+
+def get_index():
+    global _INDEX
+    if _INDEX is None:
+        _INDEX = build_pool_index()
+    return _INDEX
+
+
+def reset_index() -> None:
+    """Test isolation only."""
+    global _INDEX
+    _INDEX = None
+
 
 def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
     expected = os.environ.get("HRTE_ADMIN_TOKEN", "").strip()
@@ -58,7 +77,7 @@ def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing admin token.")
 
 
-def _ingest(records: list[dict[str, Any]], db: DbSession) -> ImportResponse:
+async def _ingest(records: list[dict[str, Any]], db: DbSession) -> ImportResponse:
     redacted = 0
     for record in records:
         row, contained_pii = build_candidate(record)
@@ -66,6 +85,13 @@ def _ingest(records: list[dict[str, Any]], db: DbSession) -> ImportResponse:
         db.add(row)
     db.commit()
     CANDIDATES_IMPORTED_TOTAL.inc(len(records))
+
+    # Index right after the write, not lazily at the next question: a manager
+    # who imports and immediately asks should be answered from the records
+    # they just added, and a sync failure should be visible now rather than
+    # silently narrowing the next answer.
+    await get_index().sync(db.execute(select(Candidate).limit(POOL_LIMIT)).scalars().all())
+
     total = db.execute(select(func.count()).select_from(Candidate)).scalar_one()
     return ImportResponse(imported=len(records), redacted=redacted, total_in_pool=int(total))
 
@@ -76,9 +102,9 @@ def _ingest(records: list[dict[str, Any]], db: DbSession) -> ImportResponse:
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin)],
 )
-def import_candidates(body: ImportRequest, db: DbSession = Depends(get_db)) -> ImportResponse:
+async def import_candidates(body: ImportRequest, db: DbSession = Depends(get_db)) -> ImportResponse:
     """Ingest scraped records of any shape, scrubbing PII at the boundary."""
-    return _ingest(body.candidates, db)
+    return await _ingest(body.candidates, db)
 
 
 @router.post(
@@ -87,7 +113,7 @@ def import_candidates(body: ImportRequest, db: DbSession = Depends(get_db)) -> I
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin)],
 )
-def load_demo_pool(db: DbSession = Depends(get_db)) -> ImportResponse:
+async def load_demo_pool(db: DbSession = Depends(get_db)) -> ImportResponse:
     """Load the bundled demo pool, pre-ranked, into an empty deployment.
 
     The baseline rankings come from ``DEMO_BASELINE`` -- hand-written, not
@@ -101,7 +127,7 @@ def load_demo_pool(db: DbSession = Depends(get_db)) -> ImportResponse:
             "The pool already has candidates. Clear it before loading the demo pool.",
         )
 
-    result = _ingest(list(DEMO_CANDIDATES), db)
+    result = await _ingest(list(DEMO_CANDIDATES), db)
     apply_baseline(db.execute(select(Candidate)).scalars().all())
     db.commit()
     return result
@@ -153,12 +179,16 @@ def get_candidate(candidate_id: str, db: DbSession = Depends(get_db)) -> Candida
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_admin)],
 )
-def delete_candidate(candidate_id: str, db: DbSession = Depends(get_db)) -> None:
+async def delete_candidate(candidate_id: str, db: DbSession = Depends(get_db)) -> None:
     row = db.get(Candidate, candidate_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such candidate.")
     db.delete(row)
     db.commit()
+    # A deleted candidate must stop being retrievable. The retrieval layer
+    # also drops unknown ids defensively, but leaving them indexed would mean
+    # paying for and reading records that no longer exist.
+    await get_index().sync(db.execute(select(Candidate).limit(POOL_LIMIT)).scalars().all())
 
 
 @router.post(
@@ -208,12 +238,23 @@ async def chat(
     db: DbSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
-    """Answer one manager question against the pool."""
+    """Answer one manager question, grounded in the records retrieval picked."""
     CHAT_MESSAGES_TOTAL.inc()
     rows = db.execute(select(Candidate).limit(POOL_LIMIT)).scalars().all()
     history = [Message(role=m.role, content=m.content) for m in body.history]
-    reply = await Analyst(settings).answer(body.message, rows, history)
-    return ChatResponse(reply=reply, candidates_considered=len(rows))
+    answer = await Analyst(settings, index=get_index()).answer(body.message, rows, history)
+
+    by_id = {row.id: row for row in rows}
+    return ChatResponse(
+        reply=answer.reply,
+        candidates_considered=len(answer.considered),
+        pool_size=len(rows),
+        sources=[
+            CandidateRef(id=cid, name=by_id[cid].name) for cid in answer.considered if cid in by_id
+        ],
+        retrieval_backend=answer.backend,
+        retrieval_ms=round(answer.retrieval_ms, 2),
+    )
 
 
 @router.get("/status", response_model=StatusResponse, dependencies=[Depends(require_admin)])
@@ -228,6 +269,7 @@ def system_status(
         ).scalar_one()
     )
     fallbacks = fallback_count()
+    retrieval_fallbacks = retrieval_fallback_count()
     return StatusResponse(
         environment=settings.environment,
         offline=settings.offline,
@@ -237,7 +279,18 @@ def system_status(
         fallbacks=fallbacks,
         candidates=total,
         analyzed=analyzed,
+        moss_configured=settings.moss_configured,
+        retrieval_backend=get_index().backend,
+        retrieval_degraded=settings.moss_configured and retrieval_fallbacks > 0,
+        retrieval_fallbacks=retrieval_fallbacks,
     )
 
 
-__all__ = ["POOL_LIMIT", "apply_baseline", "require_admin", "router"]
+__all__ = [
+    "POOL_LIMIT",
+    "apply_baseline",
+    "get_index",
+    "require_admin",
+    "reset_index",
+    "router",
+]

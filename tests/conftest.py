@@ -24,6 +24,7 @@ import pytest
 
 from app.agent.cognition import reset_fallbacks
 from app.config import Settings, reset_settings
+from app.retrieval import reset_retrieval_fallbacks
 from app.security.pii_scrubber import reset_redaction_key
 
 T = TypeVar("T")
@@ -37,6 +38,10 @@ _MANAGED_ENV: tuple[str, ...] = (
     "HRTE_MAX_OUTPUT_TOKENS",
     "HRTE_THINKING_BUDGET",
     "HRTE_PII_MODE",
+    "HRTE_MOSS_INDEX",
+    "HRTE_RETRIEVAL_TOP_K",
+    "MOSS_PROJECT_ID",
+    "MOSS_PROJECT_KEY",
     "HRTE_REDACTION_KEY",
     "HRTE_CORS_ORIGINS",
     "HRTE_ADMIN_TOKEN",
@@ -52,10 +57,12 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_settings()
     reset_redaction_key()
     reset_fallbacks()
+    reset_retrieval_fallbacks()
     yield
     reset_settings()
     reset_redaction_key()
     reset_fallbacks()
+    reset_retrieval_fallbacks()
 
 
 @pytest.fixture

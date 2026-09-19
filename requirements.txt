@@ -9,6 +9,16 @@ prometheus-client>=0.20
 # constructs a client and serves from the offline mock instead.
 google-genai>=0.3
 
+# ---- Retrieval --------------------------------------------------------------
+# Moss: semantic search over the candidate pool. Optional at runtime -- with
+# no MOSS_PROJECT_* credentials the app never constructs a client and uses its
+# local lexical index instead.
+#
+# Its runtime (inferedge-moss-core) is a native manylinux_2_35 wheel, so it
+# needs glibc >= 2.35 and will not install on Alpine/musl. Dockerfile.api is
+# on python:3.11-slim (Debian bookworm, glibc 2.36), which is why.
+moss>=1.12
+
 # ---- Persistence ------------------------------------------------------------
 sqlalchemy>=2.0
 alembic>=1.13

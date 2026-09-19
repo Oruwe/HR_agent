@@ -65,9 +65,23 @@ class ChatRequest(BaseModel):
         return value.strip()
 
 
+class CandidateRef(BaseModel):
+    """A candidate an answer was grounded in."""
+
+    id: str
+    name: str
+
+
 class ChatResponse(BaseModel):
     reply: str
+    #: How many records the analyst actually read -- not the pool size. An
+    #: answer grounded in 6 of 800 is a different claim from one that saw
+    #: everything, and the manager deserves to know which they are reading.
     candidates_considered: int
+    pool_size: int = 0
+    sources: list[CandidateRef] = Field(default_factory=list)
+    retrieval_backend: str = ""
+    retrieval_ms: float = 0.0
 
 
 class StatusResponse(BaseModel):
@@ -82,6 +96,15 @@ class StatusResponse(BaseModel):
     candidates: int = 0
     analyzed: int = 0
 
+    # -- retrieval ------------------------------------------------------------
+    #: "Moss credentials are set" -- NOT "Moss works". See retrieval_degraded.
+    moss_configured: bool = False
+    #: What actually answered the last question: Moss, or the local index.
+    retrieval_backend: str = ""
+    #: True once a configured Moss has failed and the local index took over.
+    retrieval_degraded: bool = False
+    retrieval_fallbacks: int = 0
+
 
 class ErrorResponse(BaseModel):
     error: str
@@ -91,6 +114,7 @@ class ErrorResponse(BaseModel):
 __all__ = [
     "AnalyzeResponse",
     "CandidateDetail",
+    "CandidateRef",
     "CandidateSummary",
     "ChatMessage",
     "ChatRequest",

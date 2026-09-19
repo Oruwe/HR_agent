@@ -88,9 +88,19 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface CandidateRef {
+  id: string;
+  name: string;
+}
+
 export interface ChatResponse {
   reply: string;
+  /** How many records the analyst actually read -- not the pool size. */
   candidates_considered: number;
+  pool_size: number;
+  sources: CandidateRef[];
+  retrieval_backend: string;
+  retrieval_ms: number;
 }
 
 export interface StatusResponse {
@@ -102,6 +112,11 @@ export interface StatusResponse {
   fallbacks: number;
   candidates: number;
   analyzed: number;
+  /** "Moss credentials are set" -- not "Moss works". See retrieval_degraded. */
+  moss_configured: boolean;
+  retrieval_backend: string;
+  retrieval_degraded: boolean;
+  retrieval_fallbacks: number;
 }
 
 // ---- Calls -------------------------------------------------------------------

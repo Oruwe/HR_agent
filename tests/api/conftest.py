@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 @pytest.fixture
 def api_client() -> Iterator[TestClient]:
     from app.api.app import app
+    from app.api.routes_candidates import reset_index
     from app.db import models  # noqa: F401  registers tables on Base.metadata
     from app.db.engine import Base, get_db
 
@@ -38,12 +39,16 @@ def api_client() -> Iterator[TestClient]:
         finally:
             db.close()
 
+    # The pool index is process-global so Moss is loaded once, which means
+    # it would otherwise leak documents between tests.
+    reset_index()
     app.dependency_overrides[get_db] = _override_get_db
     try:
         with TestClient(app) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
+        reset_index()
         engine.dispose()
 
 

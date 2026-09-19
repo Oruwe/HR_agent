@@ -55,6 +55,7 @@ looks like signal.
 | G6 | Zero PII egress | No identifier reaches the model, the database, or the dashboard |
 | G7 | Degradation is visible | A configured model that is failing is reported, not silently mocked |
 | G8 | Works with nothing configured | No credentials ⇒ a functioning, honestly-labelled board |
+| G9 | Scale past a promptful of candidates | A question retrieves its records; only those reach the model |
 
 ### 2.2 Non-goals
 
@@ -108,30 +109,35 @@ distinction nobody applies consistently across a pool.
 
 | # | Requirement |
 | --- | --- |
-| R13 | The manager asks a question; the answer is grounded in the stored pool |
-| R14 | Prior turns are carried as history |
-| R15 | The manager's own question is scrubbed — they will paste a resume into the box |
-| R16 | An empty pool answers honestly rather than erroring |
+| R13 | A question searches the pool first; only the matched records reach the model |
+| R14 | The answer reports how many records it read, out of how many, and by which backend |
+| R15 | A search matching nothing falls back to the head of the pool, not to an empty context |
+| R16 | Prior turns are carried as history |
+| R17 | The manager's own question is scrubbed — they will paste a resume into the box |
+| R18 | An empty pool answers honestly rather than erroring |
+| R19 | A deleted candidate can never appear in an answer, even if a remote index lags |
 
 ### 4.4 Dashboard
 
 | # | Requirement |
 | --- | --- |
-| R17 | Three columns: pool context and controls, ranked scores, the analyst |
-| R18 | Candidates are ordered best-first, unscored last |
-| R19 | Filter by verdict; search across name, role and rationale |
-| R20 | Opening a candidate shows the stored record exactly as the model saw it |
-| R21 | Model status — offline, live, or degraded — is visible without opening a console |
-| R22 | Usable at phone width |
+| R20 | Three columns: pool context and controls, ranked scores, the analyst |
+| R21 | Candidates are ordered best-first, unscored last |
+| R22 | Filter by verdict; search across name, role and rationale |
+| R23 | Opening a candidate shows the stored record exactly as the model saw it |
+| R24 | Every answer shows which records it was grounded in, as links to those records |
+| R25 | Model and retrieval status — offline, live, or degraded — visible without a console |
+| R26 | Usable at phone width |
 
 ### 4.5 Operations
 
 | # | Requirement |
 | --- | --- |
-| R23 | Every `/api` route is gated by an admin token when one is set |
-| R24 | Health and readiness are never gated |
-| R25 | A failing *configured* model is reported as `degraded`, distinctly from offline-by-choice |
-| R26 | A fresh deployment can be populated from the UI, with no shell access |
+| R27 | Every `/api` route is gated by an admin token when one is set |
+| R28 | Health and readiness are never gated |
+| R29 | A failing *configured* model is reported as `degraded`, distinctly from offline-by-choice |
+| R30 | The same holds for retrieval: a failing *configured* Moss is reported, not hidden |
+| R31 | A fresh deployment can be populated from the UI, with no shell access |
 
 ---
 
@@ -171,7 +177,40 @@ this project lost hours to that twice, once to a retired model pin
 budget and returning an empty string. Every fallback increments a counter;
 `/api/status` exposes it; the dashboard shows an amber pill.
 
-### 5.5 One ingest path
+### 5.5 Retrieval before generation
+
+`POST /api/chat` searches the pool and sends the model only what matched.
+Two backends sit behind one protocol: Moss for semantic search, and a local
+TF-IDF index for deployments with no Moss credentials.
+
+The fallback is not presented as an equivalent. It is lexical — it matches
+words the record contains — and both `/api/status` and every answer in the UI
+name the backend that produced them.
+
+Ranking deliberately does **not** go through retrieval. Ranking is
+comparative; narrowing it would mean scoring candidates against a subset of
+the field and calling the result a ranking.
+
+### 5.6 Handles, not ids, in prompts
+
+Candidates are rendered to the model as `C1`, `C2`, … rather than by their
+database UUID.
+
+This started as a bug. A UUID rendered into the prompt is run through the PII
+scrubber like everything else, and ~5% of them come back partially redacted —
+slices of a UUID look like an Aadhaar number, a passport or a payment card.
+The model echoes the mangled id back, it matches no row, and that candidate is
+silently left unscored. Measured at 5.0% over 4000 generated ids; on a
+200-record pool that is ~10 people stuck at `--` per run with nothing in the
+UI to explain it.
+
+Handles remove the failure at the root rather than exempting a pattern: they
+contain no digit runs for any detector to match, cost a fraction of the
+tokens, and models echo `C7` back reliably where they mangle a UUID. A
+ranking for a handle that is not in the pool is dropped rather than guessed
+at — an unscored candidate beats someone else's verdict on them.
+
+### 5.7 One ingest path
 
 `app/ingest.py` is the only way a record enters the database, used by both the
 HTTP route and the CLI. Two ingest paths drift, and the drift shows up as

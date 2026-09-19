@@ -70,7 +70,10 @@ class CognitionProvider(Protocol):
     ) -> AsyncIterator[CognitionChunk]: ...
 
 
-_CANDIDATE_ID_RE = re.compile(r"### Candidate id=([\w-]+) \(([^)]*)\)")
+_CANDIDATE_RE = re.compile(r"### Candidate (\w+) \(([^)]*)\)")
+
+#: The separator rendered by app.agent.analyst.render_candidate.
+_RECORD_MARKER = "### Candidate "
 
 
 @dataclass
@@ -94,36 +97,36 @@ class MockCognition:
 
     @staticmethod
     def _seen_candidates(text: str) -> list[tuple[str, str]]:
-        return _CANDIDATE_ID_RE.findall(text)
+        return _CANDIDATE_RE.findall(text)
 
     @staticmethod
     def _blocks(corpus: str) -> list[tuple[str, str, str]]:
-        """Split the rendered pool into (id, name, that candidate's text).
+        """Split the rendered pool into (handle, name, that candidate's text).
 
         Splitting on the record separator rather than slicing a fixed window
         from each match: a window runs into the *next* candidate's record, so
         every candidate looks equally detailed and the whole pool scores the
         same.
         """
-        parts = corpus.split("### Candidate id=")
+        parts = corpus.split(_RECORD_MARKER)
         out: list[tuple[str, str, str]] = []
         for part in parts[1:]:
             header, _, body = part.partition("\n")
-            candidate_id, _, rest = header.partition(" ")
+            handle, _, rest = header.partition(" ")
             name = rest.strip().strip("()")
-            out.append((candidate_id.strip(), name, body))
+            out.append((handle.strip(), name, body))
         return out
 
     def _rank_payload(self, corpus: str) -> str:
         rankings = []
-        for candidate_id, name, block in self._blocks(corpus):
+        for handle, name, block in self._blocks(corpus):
             # Richness of the record as a stand-in for fit. Honest, cheap, and
             # explicitly labelled as offline so nobody mistakes it for judgement.
             richness = min(1.0, len(block.split()) / 220.0)
             verdict = "INTERVIEW" if richness > 0.66 else "MAYBE" if richness > 0.33 else "PASS"
             rankings.append(
                 {
-                    "id": candidate_id,
+                    "id": handle,
                     "score": round(richness, 3),
                     "verdict": verdict,
                     "rationale": (

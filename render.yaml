@@ -63,6 +63,18 @@ services:
       - key: HRTE_THINKING_BUDGET
         value: "0"
 
+      # Semantic retrieval over the pool. Optional: without these, retrieval
+      # falls back to a local lexical index and the dashboard says so.
+      # https://usemoss.dev
+      - key: MOSS_PROJECT_ID
+        sync: false
+      - key: MOSS_PROJECT_KEY
+        sync: false
+      - key: HRTE_MOSS_INDEX
+        value: candidate_pool
+      - key: HRTE_RETRIEVAL_TOP_K
+        value: "12"
+
   - type: web
     name: hr-talent-evaluator-frontend
     runtime: docker

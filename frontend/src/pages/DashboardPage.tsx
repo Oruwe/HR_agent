@@ -12,10 +12,19 @@ import {
 } from "../api/client";
 import type {
   CandidateDetail,
+  CandidateRef,
   CandidateSummary,
   ChatMessage,
   StatusResponse,
 } from "../api/client";
+
+/** A chat turn plus, for the analyst's replies, what it was grounded in. */
+interface Turn extends ChatMessage {
+  sources?: CandidateRef[];
+  backend?: string;
+  poolSize?: number;
+  retrievalMs?: number;
+}
 
 /** The whole product: scraped candidate records ranked by an AI analyst, with
  * the manager able to interrogate the pool in plain language.
@@ -71,7 +80,7 @@ export default function DashboardPage() {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
 
-  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [chat, setChat] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -200,12 +209,24 @@ export default function DashboardPage() {
     const text = (question ?? draft).trim();
     if (!text || thinking) return;
     setDraft("");
-    const history = chat.slice(-10);
+    // Only role/content goes back as history -- the provenance is for the
+    // reader, not for the model.
+    const history = chat.slice(-10).map((m) => ({ role: m.role, content: m.content }));
     setChat((prev) => [...prev, { role: "user", content: text }]);
     setThinking(true);
     try {
       const result = await askAnalyst(text, history);
-      setChat((prev) => [...prev, { role: "model", content: result.reply }]);
+      setChat((prev) => [
+        ...prev,
+        {
+          role: "model",
+          content: result.reply,
+          sources: result.sources,
+          backend: result.retrieval_backend,
+          poolSize: result.pool_size,
+          retrievalMs: result.retrieval_ms,
+        },
+      ]);
     } catch (err) {
       setChat((prev) => [
         ...prev,
@@ -350,11 +371,27 @@ export default function DashboardPage() {
                 <dd>{status.environment}</dd>
                 <dt>Fallbacks</dt>
                 <dd className={status.degraded ? "alert-text" : ""}>{status.fallbacks}</dd>
+                <dt>Retrieval</dt>
+                <dd className={status.retrieval_degraded ? "alert-text" : ""}>
+                  {status.retrieval_backend}
+                </dd>
               </dl>
               {status.degraded && (
                 <p className="hint alert-text">
                   Live model calls are failing and answers are coming from the offline mock.
                   Check GOOGLE_API_KEY and HRTE_MODEL.
+                </p>
+              )}
+              {status.retrieval_degraded && (
+                <p className="hint alert-text">
+                  Moss is configured but failing, so retrieval has fallen back to the local
+                  lexical index. Answers still work; they match words rather than meaning.
+                </p>
+              )}
+              {!status.moss_configured && (
+                <p className="hint">
+                  Retrieval is lexical. Set MOSS_PROJECT_ID and MOSS_PROJECT_KEY for semantic
+                  search over the pool.
                 </p>
               )}
             </section>
@@ -424,7 +461,11 @@ export default function DashboardPage() {
           <div className="chat-head">
             <div>
               <div className="card-title">Ask the analyst</div>
-              <div className="muted small">Answers come from the {counts.total} records in the pool</div>
+              <div className="muted small">
+                {status?.retrieval_degraded
+                  ? "Moss is failing; answers are falling back to lexical search"
+                  : `Searches ${counts.total} records, then answers from what it finds`}
+              </div>
             </div>
           </div>
 
@@ -444,6 +485,27 @@ export default function DashboardPage() {
             {chat.map((m, i) => (
               <div key={i} className={`bubble-row ${m.role}`}>
                 <div className="bubble">{m.content}</div>
+                {m.role === "model" && m.sources && m.sources.length > 0 && (
+                  <div className="sources">
+                    <span className="sources-label">
+                      Read {m.sources.length} of {m.poolSize} records
+                      {m.backend ? ` · ${m.backend}` : ""}
+                      {m.retrievalMs ? ` · ${m.retrievalMs}ms` : ""}
+                    </span>
+                    <span className="source-chips">
+                      {m.sources.map((sc) => (
+                        <button
+                          key={sc.id}
+                          className="source-chip"
+                          onClick={() => void openCandidate(sc.id)}
+                          title="Open this record"
+                        >
+                          {sc.name}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
               </div>
             ))}
             {thinking && (
