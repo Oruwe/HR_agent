@@ -225,8 +225,6 @@ class ScreeningOrchestrator:
         milliseconds, whereas a round trip to a hosted vector database spends
         that much on the network before it has looked at anything.
         """
-        if self.settings.fast_path:
-            return ""
         evidence = self.session.candidate_evidence()
         if not evidence.strip():
             return ""
@@ -253,7 +251,9 @@ class ScreeningOrchestrator:
 
     async def _pump(self, draft: SpeculativeDraft) -> None:
         """Drain the provider into the draft queue, recording time-to-first-token."""
-        prompt_builder = build_fast_system_prompt if self.settings.fast_path else build_system_prompt
+        prompt_builder = (
+            build_fast_system_prompt if self.settings.fast_path else build_system_prompt
+        )
         system = prompt_builder(
             self.flow.role,
             candidate_alias=self.session.candidate.sanitized_name,
