@@ -241,7 +241,7 @@ def run_verify(settings: Settings) -> int:
     total = sum(STAGE_BUDGETS_MS.values())
     for stage in Stage:
         print(f"  {stage.value:<22} {STAGE_BUDGETS_MS[stage]:>6.1f} ms")
-    print(f"  {'TOTAL':<22} {total:>6.1f} ms  [{'PASS' if total == 160.0 else 'FAIL'}]")
+    print(f"  {'TOTAL':<22} {total:>6.1f} ms  [{'PASS' if total == TOTAL_TURNAROUND_BUDGET_MS else 'FAIL'}]")
     ok &= total == 160.0
 
     _print_header("ROLE RUBRICS")
@@ -316,7 +316,7 @@ async def run_live(settings: Settings, room: str) -> int:  # pragma: no cover - 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="hr-talent-evaluator",
-        description="Sub-160ms voice-enabled HR technical screening agent.",
+        description="Sub-150ms voice-enabled HR technical screening agent.",
     )
     sub = parser.add_subparsers(dest="command")
     demo = sub.add_parser(
