@@ -116,6 +116,15 @@ export interface SessionSummary {
   created_at: number;
   updated_at: number;
   has_evaluation: boolean;
+  rubric_fit_index: number | null;
+  recommendation: string | null;
+}
+
+export interface TranscriptTurn {
+  speaker: "candidate" | "agent" | string;
+  text: string;
+  offset_ms: number;
+  turnaround_ms: number | null;
 }
 
 export interface LatencyStageOut {
@@ -195,6 +204,12 @@ export function getSystemStatus(adminToken?: string) {
 
 export function getAdminEvaluation(sessionId: string, adminToken?: string) {
   return request<EvaluationResponse>(`/api/admin/sessions/${sessionId}/evaluation`, {
+    headers: adminToken ? { "X-Admin-Token": adminToken } : undefined,
+  });
+}
+
+export function getAdminTranscript(sessionId: string, adminToken?: string) {
+  return request<TranscriptTurn[]>(`/api/admin/sessions/${sessionId}/transcript`, {
     headers: adminToken ? { "X-Admin-Token": adminToken } : undefined,
   });
 }

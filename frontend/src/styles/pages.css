@@ -231,122 +231,15 @@
   font-size: 14px;
 }
 
-/* ---- Admin dashboard ----------------------------------------------------- */
-
-.admin-dashboard {
-  width: 100%;
-  max-width: 960px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.admin-back-link {
-  color: var(--ink-500);
-  text-decoration: none;
-  font-size: 13px;
-}
-
-.admin-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--space-3);
-}
-
-.admin-stat {
-  padding: var(--space-4);
-}
-
-.admin-stat-label {
-  font-size: 12px;
-  color: var(--ink-500);
-  margin-bottom: var(--space-1);
-}
-
-.admin-stat-value {
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.admin-capabilities {
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.capability-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.stage-budget-bars {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.stage-budget-row {
-  display: grid;
-  grid-template-columns: 160px 1fr 60px;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: 12px;
-}
-
-.stage-budget-label {
-  text-transform: capitalize;
-  color: var(--paper-200);
-}
-
-.stage-budget-track {
-  height: 6px;
-  background: var(--ink-700);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.stage-budget-fill {
-  height: 100%;
-  background: var(--on-budget-cyan);
-}
-
-.stage-budget-value {
-  text-align: right;
-  color: var(--ink-500);
-}
-
-.admin-sessions {
-  padding: var(--space-5);
-}
-
-.admin-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.admin-table th {
-  text-align: left;
-  color: var(--ink-500);
-  font-weight: 500;
-  font-size: 11px;
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--ink-700);
-}
-
-.admin-table td {
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--ink-800);
-}
+/* The Admin Dashboard has its own stylesheet (admin-theme.css) with its own
+   scoped tokens -- see DashboardPage.tsx. Nothing admin-specific belongs
+   here anymore. */
 
 @media (max-width: 640px) {
   .interview-page {
     height: auto;
   }
-  .score-row,
-  .stage-budget-row {
+  .score-row {
     grid-template-columns: 1fr;
     gap: 4px;
   }

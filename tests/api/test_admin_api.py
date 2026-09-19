@@ -64,6 +64,45 @@ def test_admin_session_evaluation_matches_candidate_facing_one(
     assert admin_response.json()["recommendation"] == candidate_response.json()["recommendation"]
 
 
+def test_admin_transcript_returns_ordered_turns(create_session, api_client: TestClient) -> None:
+    session = create_session()
+    headers = {"Authorization": f"Bearer {session['session_token']}"}
+    sid = session["session_id"]
+    api_client.post(
+        f"/api/sessions/{sid}/turns/text", json={"text": "hello there"}, headers=headers
+    )
+
+    response = api_client.get(f"/api/admin/sessions/{sid}/transcript")
+    assert response.status_code == 200
+    turns = response.json()
+    assert [t["speaker"] for t in turns] == ["agent", "candidate", "agent"]
+    assert turns[1]["text"] == "hello there"
+    assert turns == sorted(turns, key=lambda t: t["offset_ms"])
+
+
+def test_admin_transcript_on_unknown_session_is_404(api_client: TestClient) -> None:
+    response = api_client.get("/api/admin/sessions/does-not-exist/transcript")
+    assert response.status_code == 404
+
+
+def test_session_summary_carries_ranking_fields_only_after_close(
+    create_session, api_client: TestClient
+) -> None:
+    session = create_session()
+    headers = {"Authorization": f"Bearer {session['session_token']}"}
+    sid = session["session_id"]
+
+    row = next(s for s in api_client.get("/api/admin/sessions").json() if s["session_id"] == sid)
+    assert row["rubric_fit_index"] is None
+    assert row["recommendation"] is None
+
+    api_client.post(f"/api/sessions/{sid}/close", headers=headers)
+
+    row = next(s for s in api_client.get("/api/admin/sessions").json() if s["session_id"] == sid)
+    assert isinstance(row["rubric_fit_index"], float)
+    assert row["recommendation"] is not None
+
+
 def test_admin_token_gate(create_session, api_client: TestClient) -> None:
     import os
 

@@ -80,6 +80,17 @@ class SessionSummary(BaseModel):
     created_at: int
     updated_at: int
     has_evaluation: bool
+    #: Populated once close() has run; None for an active session. Lets the
+    #: admin dashboard rank candidates without a per-row evaluation fetch.
+    rubric_fit_index: float | None = None
+    recommendation: str | None = None
+
+
+class TranscriptTurnOut(BaseModel):
+    speaker: str
+    text: str
+    offset_ms: float
+    turnaround_ms: float | None = None
 
 
 class LatencyStagesOut(BaseModel):
@@ -113,6 +124,7 @@ __all__ = [
     "LatencyStagesOut",
     "SessionSummary",
     "SystemStatusResponse",
+    "TranscriptTurnOut",
     "TurnRequest",
     "TurnResponse",
 ]
