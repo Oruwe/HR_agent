@@ -241,7 +241,10 @@ def run_verify(settings: Settings) -> int:
     total = sum(STAGE_BUDGETS_MS.values())
     for stage in Stage:
         print(f"  {stage.value:<22} {STAGE_BUDGETS_MS[stage]:>6.1f} ms")
-    print(f"  {'TOTAL':<22} {total:>6.1f} ms  [{'PASS' if total == TOTAL_TURNAROUND_BUDGET_MS else 'FAIL'}]")
+    print(
+        f"  {'TOTAL':<22} {total:>6.1f} ms  "
+        f"[{'PASS' if total == TOTAL_TURNAROUND_BUDGET_MS else 'FAIL'}]"
+    )
     ok &= total == TOTAL_TURNAROUND_BUDGET_MS
 
     _print_header("ROLE RUBRICS")
