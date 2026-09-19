@@ -3,7 +3,14 @@ name: ci
 on:
   push:
     branches: ["**"]
+  # Deliberately not the default `pull_request` set. `synchronize` fires on
+  # every push to a PR branch, which the `push` trigger above already covers,
+  # so the default set ran the whole workflow twice per push -- 8 check runs
+  # for 4 jobs, double the Actions minutes, and a check list nobody can read.
+  # These three cover the case `push` cannot: a PR opened or reopened on a
+  # branch that was pushed earlier.
   pull_request:
+    types: [opened, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
