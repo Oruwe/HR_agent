@@ -21,6 +21,13 @@ from app.schemas.roles import (
 )
 from app.security.pii_scrubber import scrub
 
+#: Payload keys the egress PII scan (``upsert_candidate``) must not scrub as
+#: free text. ``candidate_id`` is the only member: a ``uuid.uuid4()`` string,
+#: never derived from anything the candidate wrote, so no PII pattern can
+#: legitimately fire on it -- only a false positive can, and one does at a
+#: measurable rate (see the docstring on :meth:`CandidateEvaluation.to_payload`).
+PII_EXEMPT_PAYLOAD_KEYS: frozenset[str] = frozenset({"candidate_id"})
+
 
 class Recommendation(StrEnum):
     """Screening outcome. Never an offer -- see SOUL.md Boundaries."""
@@ -120,7 +127,16 @@ class CandidateEvaluation(BaseModel):
         return {c.key: round(c.score, 4) for c in self.competency_scores}
 
     def to_payload(self) -> dict[str, object]:
-        """The exact Qdrant payload shape. Contains no identifiers by design."""
+        """The exact Qdrant payload shape. Contains no candidate-derived identifiers
+        by design -- ``candidate_id`` is a machine-generated UUID, never text the
+        candidate authored, so it carries no PII by construction. See
+        :data:`PII_EXEMPT_PAYLOAD_KEYS`: it is deliberately excluded from the
+        egress PII scan rather than scanned and hoped-safe, because the scanner's
+        loose, checksum-free patterns (see ``app.security.pii_scrubber``) treat a
+        UUID hex fragment as indistinguishable from a passport number often enough
+        to matter -- an eight-character group is one letter plus seven digits
+        away from matching by pure chance.
+        """
         return {
             "candidate_id": self.candidate_id,
             "sanitized_name": self.sanitized_name,
