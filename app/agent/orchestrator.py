@@ -41,7 +41,7 @@ from app.agent.cognition import (
     ToolCall,
     build_cognition,
 )
-from app.agent.conversation_prompts import build_system_prompt, closing, greeting
+from app.agent.conversation_prompts import build_fast_system_prompt, build_system_prompt, closing, greeting
 from app.agent.interview_flow import InterviewFlow
 from app.config import Settings, Stage, get_settings
 from app.schemas.candidate import (
@@ -220,6 +220,8 @@ class ScreeningOrchestrator:
         milliseconds, whereas a round trip to a hosted vector database spends
         that much on the network before it has looked at anything.
         """
+        if self.settings.fast_path:
+            return ""
         evidence = self.session.candidate_evidence()
         if not evidence.strip():
             return ""
@@ -246,7 +248,8 @@ class ScreeningOrchestrator:
 
     async def _pump(self, draft: SpeculativeDraft) -> None:
         """Drain the provider into the draft queue, recording time-to-first-token."""
-        system = build_system_prompt(
+        prompt_builder = build_fast_system_prompt if self.settings.fast_path else build_system_prompt
+        system = prompt_builder(
             self.flow.role,
             candidate_alias=self.session.candidate.sanitized_name,
             covered=self.flow.covered(),
@@ -256,9 +259,11 @@ class ScreeningOrchestrator:
         if self._pending_context:
             directive = f"{self._pending_context}\n{directive}"
 
-        messages = [*self._history, Message(role="user", content=directive)]
+        history = self._history[-2:] if self.settings.fast_path else self._history
+        messages = [*history, Message(role="user", content=directive)]
         try:
-            async for chunk in draft.provider.stream(system, messages, TOOL_SCHEMAS):
+            tools = () if self.settings.fast_path else TOOL_SCHEMAS
+            async for chunk in draft.provider.stream(system, messages, tools):
                 if draft.cancelled:
                     return
                 if chunk.type is ChunkType.TEXT and chunk.text:
