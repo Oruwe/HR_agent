@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.config import TOTAL_TURNAROUND_BUDGET_MS
+
 
 def test_health_ok(api_client: TestClient) -> None:
     response = api_client.get("/health")
@@ -45,7 +47,7 @@ def test_admin_status_reports_capability_flags(api_client: TestClient) -> None:
     assert body["stt_configured"] is False
     assert body["session_state_backend"] == "in-process"
     assert len(body["stage_budgets"]) == 7
-    assert sum(s["budget_ms"] for s in body["stage_budgets"]) == 160.0
+    assert sum(s["budget_ms"] for s in body["stage_budgets"]) == TOTAL_TURNAROUND_BUDGET_MS
 
 
 def test_admin_session_evaluation_matches_candidate_facing_one(
@@ -57,7 +59,7 @@ def test_admin_session_evaluation_matches_candidate_facing_one(
     api_client.post(f"/api/sessions/{sid}/close", headers=headers)
 
     admin_response = api_client.get(f"/api/admin/sessions/{sid}/evaluation")
-    candidate_response = api_client.get(f"/api/sessions/{sid}/evaluation")
+    candidate_response = api_client.get(f"/api/sessions/{sid}/evaluation", headers=headers)
     assert admin_response.status_code == candidate_response.status_code == 200
     assert admin_response.json()["recommendation"] == candidate_response.json()["recommendation"]
 

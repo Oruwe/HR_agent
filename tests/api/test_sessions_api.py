@@ -115,7 +115,29 @@ def test_turn_after_close_is_rejected(create_session, api_client: TestClient) ->
 
 def test_get_evaluation_before_close_is_404(create_session, api_client: TestClient) -> None:
     session = create_session()
+    headers = {"Authorization": f"Bearer {session['session_token']}"}
+    response = api_client.get(f"/api/sessions/{session['session_id']}/evaluation", headers=headers)
+    assert response.status_code == 404
+
+
+def test_get_evaluation_without_token_is_rejected(create_session, api_client: TestClient) -> None:
+    session = create_session()
     response = api_client.get(f"/api/sessions/{session['session_id']}/evaluation")
+    assert response.status_code == 401
+
+
+def test_get_evaluation_with_wrong_token_is_rejected(
+    create_session, api_client: TestClient
+) -> None:
+    session = create_session()
+    headers = {"Authorization": "Bearer not-the-real-token"}
+    response = api_client.get(f"/api/sessions/{session['session_id']}/evaluation", headers=headers)
+    assert response.status_code == 401
+
+
+def test_get_evaluation_on_unknown_session_is_404(api_client: TestClient) -> None:
+    headers = {"Authorization": "Bearer whatever"}
+    response = api_client.get("/api/sessions/does-not-exist/evaluation", headers=headers)
     assert response.status_code == 404
 
 
@@ -125,7 +147,7 @@ def test_get_evaluation_after_close(create_session, api_client: TestClient) -> N
     sid = session["session_id"]
     api_client.post(f"/api/sessions/{sid}/close", headers=headers)
 
-    response = api_client.get(f"/api/sessions/{sid}/evaluation")
+    response = api_client.get(f"/api/sessions/{sid}/evaluation", headers=headers)
     assert response.status_code == 200
     assert response.json()["session_id"] == sid
 

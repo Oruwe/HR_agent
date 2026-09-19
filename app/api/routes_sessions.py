@@ -392,7 +392,16 @@ async def close_session(
 
 
 @router.get("/{session_id}/evaluation", response_model=EvaluationResponse)
-def get_evaluation(session_id: str, db: DbSession = Depends(get_db)) -> EvaluationResponse:
+def get_evaluation(
+    session_id: str,
+    token: str = Depends(extract_bearer_token),
+    db: DbSession = Depends(get_db),
+) -> EvaluationResponse:
+    session_record = db.get(SessionRecord, session_id)
+    if session_record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such session.")
+    if not verify_token(token, session_record.token_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid session token.")
     record = db.get(EvaluationRecord, session_id)
     if record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No evaluation yet for this session.")

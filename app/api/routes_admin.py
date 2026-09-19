@@ -12,6 +12,7 @@ is unaffected.
 
 from __future__ import annotations
 
+import hmac
 import time
 from urllib.parse import urlsplit
 
@@ -42,7 +43,7 @@ def _require_admin(
     import os
 
     expected = os.environ.get("HRTE_ADMIN_TOKEN", "").strip()
-    if expected and x_admin_token != expected:
+    if expected and not hmac.compare_digest(x_admin_token or "", expected):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing admin token.")
 
 

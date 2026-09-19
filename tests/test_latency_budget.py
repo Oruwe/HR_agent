@@ -1,4 +1,4 @@
-"""The 160ms turnaround budget, measured rather than asserted by construction.
+"""The 150ms turnaround budget, measured rather than asserted by construction.
 
 What "turnaround" means here is precise and worth stating, because the number is
 easy to make meaningless: it is the wall time from **endpoint commit** (the VAD
