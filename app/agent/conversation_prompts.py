@@ -154,7 +154,6 @@ CLOSING_TEMPLATE = (
 )
 
 
-
 def build_fast_system_prompt(
     role: EngineeringRole,
     *,
@@ -184,6 +183,7 @@ def build_fast_system_prompt(
             session,
         ]
     )
+
 
 def greeting(role: EngineeringRole) -> str:
     return GREETING_TEMPLATE
