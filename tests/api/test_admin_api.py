@@ -59,7 +59,7 @@ def test_admin_session_evaluation_matches_candidate_facing_one(
     api_client.post(f"/api/sessions/{sid}/close", headers=headers)
 
     admin_response = api_client.get(f"/api/admin/sessions/{sid}/evaluation")
-    candidate_response = api_client.get(f"/api/sessions/{sid}/evaluation")
+    candidate_response = api_client.get(f"/api/sessions/{sid}/evaluation", headers=headers)
     assert admin_response.status_code == candidate_response.status_code == 200
     assert admin_response.json()["recommendation"] == candidate_response.json()["recommendation"]
 
