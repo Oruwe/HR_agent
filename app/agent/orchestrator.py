@@ -81,6 +81,15 @@ def _now_ms() -> float:
     return time.perf_counter() * 1000.0
 
 
+#: How much conversation history the fast live path hands to the model. Two
+#: entries (one exchange) made every follow-up read as a reaction to an
+#: isolated instruction rather than to an actual conversation -- the model had
+#: no memory of anything the candidate said more than one turn ago. Eight
+#: entries is four exchanges: enough for the interview to feel continuous
+#: without unbounded prompt growth over a twelve-turn call.
+FAST_PATH_HISTORY_TURNS = 8
+
+
 @dataclass
 class SpeculativeDraft:
     """A response being generated before the turn is confirmed.
@@ -269,7 +278,9 @@ class ScreeningOrchestrator:
         if self._pending_context:
             directive = f"{self._pending_context}\n{directive}"
 
-        history = self._history[-2:] if self.settings.fast_path else self._history
+        history = (
+            self._history[-FAST_PATH_HISTORY_TURNS:] if self.settings.fast_path else self._history
+        )
         messages = [*history, Message(role="user", content=directive)]
         try:
             tools = () if self.settings.fast_path else TOOL_SCHEMAS

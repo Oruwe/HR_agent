@@ -153,8 +153,15 @@ class Settings(BaseModel):
     # -- cognition ------------------------------------------------------------
     google_api_key: str = ""
     cognition_model: str = "gemini-2.0-flash"
-    cognition_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    cognition_max_tokens: int = Field(default=48, gt=0)
+    #: 0.7 rather than a near-zero value: the *decisions* here (which
+    #: competency to probe, how to score one) are deterministic and made in
+    #: code, never by the model (see app/agent/interview_flow.py) -- so the
+    #: model has room to vary its phrasing turn to turn without touching
+    #: anything that has to be reproducible or auditable.
+    cognition_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    #: Matches the value .env.example has documented; the previous 48-token
+    #: default silently clipped every response to a single terse fragment.
+    cognition_max_tokens: int = Field(default=150, gt=0)
     fast_path: bool = True
 
     # -- synthesis ------------------------------------------------------------
@@ -259,8 +266,8 @@ def load_settings() -> Settings:
         room_prefix=_env("HRTE_ROOM_PREFIX", "screening"),
         google_api_key=_env("GOOGLE_API_KEY"),
         cognition_model=_env("HRTE_COGNITION_MODEL", "gemini-2.0-flash"),
-        cognition_temperature=_env_float("HRTE_COGNITION_TEMPERATURE", 0.2),
-        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 48),
+        cognition_temperature=_env_float("HRTE_COGNITION_TEMPERATURE", 0.7),
+        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 150),
         fast_path=_env("HRTE_FAST_PATH", "true").lower() not in {"0", "false", "no"},
         speech_engine=SpeechEngine(_env("HRTE_SPEECH_ENGINE", "mock") or "mock"),
         speech_ws_url=_env("HRTE_SPEECH_WS_URL"),
