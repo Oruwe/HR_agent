@@ -51,13 +51,13 @@ class Stage(StrEnum):
 #: Per-stage ceilings. These sum to exactly TOTAL_TURNAROUND_BUDGET_MS, so a
 #: stage that overruns has provably stolen headroom from a downstream stage.
 STAGE_BUDGETS_MS: Final[dict[Stage, float]] = {
-    Stage.TRANSPORT_INGRESS: 20.0,  # LiveKit WebRTC PeerConnection, edge -> SFU -> worker
-    Stage.VAD_ENDPOINT: 25.0,  # Silero VAD v5 endpoint decision (ONNX, CPU)
-    Stage.AUDIO_INGESTION: 15.0,  # dual-track 20ms ring buffer assembly
-    Stage.VECTOR_MATCH: 10.0,  # Qdrant HNSW, in-memory
+    Stage.TRANSPORT_INGRESS: 15.0,  # LiveKit WebRTC PeerConnection, edge -> SFU -> worker
+    Stage.VAD_ENDPOINT: 20.0,  # Silero VAD v5 endpoint decision (ONNX, CPU)
+    Stage.AUDIO_INGESTION: 10.0,  # dual-track 20ms ring buffer assembly
+    Stage.VECTOR_MATCH: 5.0,  # in-memory rubric lookup
     Stage.COGNITION_TTFT: 45.0,  # streaming LLM time-to-first-token
     Stage.SPEECH_SYNTHESIS: 35.0,  # speech-to-speech first audio frame
-    Stage.TRANSPORT_EGRESS: 10.0,  # jitter buffer + WebRTC publish
+    Stage.TRANSPORT_EGRESS: 20.0,  # jitter buffer + WebRTC publish
 }
 
 #: Stages whose cost is paid *concurrently with the candidate still speaking*
