@@ -44,6 +44,8 @@ jobs:
             "uvicorn[standard]>=0.29" \
             "python-multipart>=0.0.9" \
             "httpx>=0.27" \
+            "httpx2>=2.13,<3" \
+            "anyio>=4.6,<4.15" \
             "sqlalchemy>=2.0" \
             "alembic>=1.13" \
             "psycopg2-binary>=2.9" \

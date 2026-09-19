@@ -27,6 +27,8 @@ fastapi>=0.111
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9   # multipart audio uploads
 httpx>=0.27                # Deepgram STT client + FastAPI TestClient in tests
+httpx2>=2.13,<3
+anyio>=4.6,<4.15           # already implied by livekit-agents; explicit for stt/synthesis paths
 websockets>=12.0           # already implied by livekit-agents; explicit for stt/synthesis paths
 
 # ---- Persistence: Primary DB + migrations -----------------------------------
