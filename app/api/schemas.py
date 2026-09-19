@@ -102,7 +102,14 @@ class LatencyStagesOut(BaseModel):
 class SystemStatusResponse(BaseModel):
     environment: str
     offline: bool
+    #: "An API key is set" -- NOT "that key works". See cognition_degraded.
     cognition_configured: bool
+    #: True once a live cognition call has failed and been served by the
+    #: offline fallback instead. A configured-but-degraded deployment answers
+    #: every candidate with the same canned sentence, and without this it
+    #: looks identical to a healthy one.
+    cognition_degraded: bool = False
+    cognition_fallbacks: int = 0
     moss_configured: bool
     qdrant_configured: bool
     transport_configured: bool

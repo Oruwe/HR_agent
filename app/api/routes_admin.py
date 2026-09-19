@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
+from app.agent.cognition import cognition_fallback_count
 from app.api.schemas import (
     EvaluationResponse,
     LatencyStagesOut,
@@ -129,10 +130,13 @@ async def system_status(
     settings: Settings = Depends(get_settings),
     store: SessionStore = Depends(get_session_store),
 ) -> SystemStatusResponse:
+    fallbacks = cognition_fallback_count()
     return SystemStatusResponse(
         environment=settings.environment,
         offline=settings.offline,
         cognition_configured=settings.cognition_configured,
+        cognition_degraded=settings.cognition_configured and fallbacks > 0,
+        cognition_fallbacks=fallbacks,
         moss_configured=settings.moss_configured,
         qdrant_configured=settings.qdrant_configured,
         transport_configured=settings.transport_configured,

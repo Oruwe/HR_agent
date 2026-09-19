@@ -137,6 +137,8 @@ export interface SystemStatusResponse {
   environment: string;
   offline: boolean;
   cognition_configured: boolean;
+  cognition_degraded: boolean;
+  cognition_fallbacks: number;
   moss_configured: boolean;
   qdrant_configured: boolean;
   transport_configured: boolean;

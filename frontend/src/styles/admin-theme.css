@@ -197,6 +197,17 @@
   color: var(--admin-purple-600);
 }
 
+.admin-stat-card-value-alert {
+  color: var(--admin-red);
+}
+
+.admin-stat-card-note {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--admin-red);
+}
+
 /* ---- Candidate list (left pane) ------------------------------------------ */
 
 .admin-list-pane {

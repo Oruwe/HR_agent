@@ -103,6 +103,36 @@ def test_session_summary_carries_ranking_fields_only_after_close(
     assert row["recommendation"] is not None
 
 
+def test_status_reports_cognition_degraded_when_live_calls_fall_back(
+    api_client: TestClient,
+) -> None:
+    """A configured-but-failing provider must not read as healthy.
+
+    This is the exact production incident this field exists for: the key was
+    set, so `cognition_configured` was True and the dashboard said "Live",
+    while every single Gemini call 4xx'd and each answer came from the canned
+    offline fallback.
+    """
+    from app.agent.cognition import record_cognition_fallback, reset_cognition_fallbacks
+
+    reset_cognition_fallbacks()
+    try:
+        body = api_client.get("/api/admin/status").json()
+        assert body["cognition_fallbacks"] == 0
+        assert body["cognition_degraded"] is False
+
+        record_cognition_fallback()
+        record_cognition_fallback()
+
+        body = api_client.get("/api/admin/status").json()
+        assert body["cognition_fallbacks"] == 2
+        # Offline by configuration is not "degraded" -- only a provider that
+        # was supposed to work and didn't.
+        assert body["cognition_degraded"] is body["cognition_configured"]
+    finally:
+        reset_cognition_fallbacks()
+
+
 def test_admin_token_gate(create_session, api_client: TestClient) -> None:
     import os
 

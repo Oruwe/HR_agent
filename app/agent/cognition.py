@@ -25,6 +25,31 @@ from app.security.token_guard import redact_credentials
 
 logger = logging.getLogger(__name__)
 
+#: How many times a real cognition call has failed and silently handed the
+#: turn to the offline mock. This exists because `cognition_configured` only
+#: means "an API key is set", not "that key works" -- without a counter, an
+#: interview where *every* answer came from the canned fallback is
+#: indistinguishable, in the admin dashboard and in the API, from a healthy
+#: one. A deployment answering every candidate with the same hardcoded
+#: sentence should be impossible to miss.
+_cognition_fallbacks = 0
+
+
+def record_cognition_fallback() -> None:
+    global _cognition_fallbacks
+    _cognition_fallbacks += 1
+
+
+def cognition_fallback_count() -> int:
+    """Number of live cognition calls that fell back since process start."""
+    return _cognition_fallbacks
+
+
+def reset_cognition_fallbacks() -> None:
+    """Test isolation only."""
+    global _cognition_fallbacks
+    _cognition_fallbacks = 0
+
 
 class ChunkType(StrEnum):
     TEXT = "text"
@@ -270,9 +295,19 @@ class GeminiCognition:
             if not self._aborted:
                 yield CognitionChunk(type=ChunkType.DONE)
         except Exception as exc:  # pragma: no cover - degradation path
+            record_cognition_fallback()
+            # The exception *message* is the difference between "your key is
+            # wrong" and "that model name doesn't exist" -- logging only the
+            # class name (as this did) makes a total cognition outage look
+            # identical to a transient blip, and leaves an operator with
+            # nothing to act on. Redacted because provider errors sometimes
+            # echo the request URL, key and all.
             logger.warning(
-                "Gemini stream failed (%s); continuing the interview on the fallback provider.",
+                "Gemini stream failed (%s: %s); continuing the interview on the "
+                "fallback provider. Every answer from here is the canned offline "
+                "response, not a real one.",
                 type(exc).__name__,
+                redact_credentials(str(exc))[:500],
             )
             async for chunk in self._fallback.stream(system_prompt, messages, tools):
                 yield chunk
@@ -295,4 +330,7 @@ __all__ = [
     "MockCognition",
     "ToolCall",
     "build_cognition",
+    "cognition_fallback_count",
+    "record_cognition_fallback",
+    "reset_cognition_fallbacks",
 ]

@@ -173,7 +173,25 @@ export default function DashboardPage() {
           </div>
           <div className="admin-stat-card">
             <div className="admin-stat-card-label">Cognition</div>
-            <div className="admin-stat-card-value">{status.cognition_configured ? "Live" : "Offline"}</div>
+            {/* "Configured" is not "working": when the provider rejects every
+                call the app keeps interviewing on the canned offline answer,
+                which is worse than an outage because it looks like a real
+                interview. Say so here rather than showing "Live". */}
+            <div
+              className={`admin-stat-card-value ${status.cognition_degraded ? "admin-stat-card-value-alert" : ""}`}
+            >
+              {status.cognition_degraded
+                ? "Degraded"
+                : status.cognition_configured
+                  ? "Live"
+                  : "Offline"}
+            </div>
+            {status.cognition_degraded && (
+              <div className="admin-stat-card-note">
+                {status.cognition_fallbacks} call{status.cognition_fallbacks === 1 ? "" : "s"} fell
+                back to the canned answer — check GOOGLE_API_KEY
+              </div>
+            )}
           </div>
           <div className="admin-stat-card">
             <div className="admin-stat-card-label">Retrieval</div>
