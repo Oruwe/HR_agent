@@ -49,7 +49,7 @@ services:
       - key: GOOGLE_API_KEY
         sync: false
       - key: HRTE_COGNITION_MODEL
-        value: gemini-2.0-flash
+        value: gemini-flash-latest
       - key: MOSS_PROJECT_ID
         sync: false
       - key: MOSS_PROJECT_KEY
