@@ -405,7 +405,7 @@ def test_document_resolves_by_metadata_when_id_is_absent(moss_settings: Settings
 # =============================================================================
 
 
-def test_embedded_retrieval_is_within_the_10ms_budget() -> None:
+def test_embedded_retrieval_is_within_the_retrieval_budget() -> None:
     async def go() -> list[float]:
         retriever = EmbeddedRetriever()
         await retriever.warm()
@@ -424,7 +424,7 @@ def test_embedded_retrieval_is_within_the_10ms_budget() -> None:
     )
 
 
-def test_moss_retrieval_is_within_the_10ms_budget(
+def test_moss_retrieval_is_within_the_retrieval_budget(
     fake_moss: type[_FakeMossClient], moss_settings: Settings
 ) -> None:
     async def go() -> list[float]:
@@ -443,7 +443,7 @@ def test_moss_retrieval_is_within_the_10ms_budget(
 def test_retrieval_budget_is_the_declared_stage_budget() -> None:
     from app.config import STAGE_BUDGETS_MS, Stage
 
-    assert RETRIEVAL_BUDGET_MS == STAGE_BUDGETS_MS[Stage.VECTOR_MATCH] == 10.0
+    assert STAGE_BUDGETS_MS[Stage.VECTOR_MATCH] == RETRIEVAL_BUDGET_MS
 
 
 # =============================================================================

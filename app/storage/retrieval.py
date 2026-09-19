@@ -2,21 +2,21 @@
 
 Why retrieval is the latency story
 ----------------------------------
-The 160ms turnaround budget allocates exactly 10ms to fetching the context the
+The 150ms turnaround budget allocates exactly 5ms to fetching the context the
 interviewer needs -- which competency the candidate is currently demonstrating,
 so the next question lands on the rubric instead of wandering. A conventional
 vector database cannot participate in that budget honestly: a network hop to a
 managed service is 15-40ms before the index has done any work at all, so the
-"10ms" line item silently becomes 50ms and the whole budget is fiction.
+"5ms" line item silently becomes 50ms and the whole budget is fiction.
 
 `Moss <https://www.moss.dev/>`_ is a search *runtime* rather than a database.
 It runs in-process -- browser, edge, device or cloud -- so a query is a function
-call, not a round trip, and sub-10ms retrieval is achievable rather than
+call, not a round trip, and sub-5ms retrieval is achievable rather than
 aspirational. That is why it sits on the hot path here.
 
 Backends
 --------
-* :class:`MossRetriever` -- production. Sub-10ms in-process hybrid (semantic +
+* :class:`MossRetriever` -- production. Sub-5ms in-process hybrid (semantic +
   keyword) search over the rubric corpus.
 * :class:`EmbeddedRetriever` -- the offline fallback, backed by
   :class:`~app.storage.qdrant_client.HybridVectorStore`. Identical interface, no

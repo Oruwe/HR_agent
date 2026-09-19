@@ -400,7 +400,7 @@ class HybridVectorStore:
     def search_rubrics(self, evidence: str, limit: int = 3) -> list[SearchHit]:
         """Hybrid rubric lookup, collapsed to one hit per role.
 
-        This is the call that sits inside the 10ms retrieval budget. It returns
+        This is the call that sits inside the 5ms retrieval budget. It returns
         *retrieval context* for the interviewer prompt -- which competency the
         candidate is currently demonstrating -- and is explicitly not the role
         routing decision. Routing is decided by the deterministic matcher in

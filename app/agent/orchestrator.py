@@ -1,6 +1,6 @@
 """The cognitive turn loop: speculation, retrieval, generation, and scoring.
 
-This is where the 160ms budget is actually won or lost, so it is worth stating
+This is where the 150ms budget is actually won or lost, so it is worth stating
 the mechanism plainly.
 
 A conventional voice agent runs strictly in sequence once the candidate stops
@@ -9,14 +9,14 @@ synthesise. Every one of those costs is paid *after* the candidate is already
 waiting, which is why the usual number is over a second.
 
 This orchestrator instead starts work during the silence it is still measuring.
-At 120ms of silence the VAD emits SPECULATE and we begin retrieval and
-generation on a draft turn. At 250ms it emits TURN_COMMIT and, in the common
+At 40ms of silence the VAD emits SPECULATE and we begin retrieval and
+generation on a draft turn. At 120ms it emits TURN_COMMIT and, in the common
 case, the first tokens are already buffered -- so the candidate-perceived
 latency is the time to hand the first synthesised frame to the transport, not
 the time to produce the answer. If the candidate resumes talking in between,
 the draft is aborted and we have lost nothing but some compute.
 
-The honest accounting: speculation converts the 130ms speculation window into
+The honest accounting: speculation converts the 80ms speculation window into
 free budget. It does not make a network round trip faster, and a turn whose
 generation takes longer than the window still pays the difference. That is why
 :class:`TurnMetrics` records both the perceived wait and the true stage costs --

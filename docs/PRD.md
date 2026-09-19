@@ -52,8 +52,8 @@ questions, or feel slower.
 
 | # | Goal | Measure |
 |---|---|---|
-| G1 | Conversational presence | ≤160ms from endpoint commit to first audio byte, p95 |
-| G2 | On-rubric questioning | Rubric context retrieved on every turn in <10ms |
+| G1 | Conversational presence | ≤150ms from endpoint commit to first audio byte, p95 |
+| G2 | On-rubric questioning | Rubric context retrieved on every turn in <5ms |
 | G3 | Comparable evaluations | Identical rubric, identical order, deterministic scores |
 | G4 | Interruptible | Queued agent audio stops being heard within 15ms of barge-in |
 | G5 | Zero PII egress | No identifier reaches model, store, trace, or disk |
@@ -93,20 +93,20 @@ waiting in sequence for work that could have started earlier.
 
 Two changes recover almost all of it:
 
-1. **Speculative turn-taking.** Start retrieving and generating at 120ms of
-   silence; commit at 250ms. The 130ms window is paid for by silence the
+1. **Speculative turn-taking.** Start retrieving and generating at 40ms of
+   silence; commit at 120ms. The 80ms window is paid for by silence the
    candidate is producing anyway. If they resume, discard the draft — the cost
    is compute, not latency.
 2. **In-process retrieval.** Moss runs inside the worker, so fetching rubric
    context is a function call rather than a network hop. This is what makes the
-   10ms retrieval line item real rather than aspirational.
+   5ms retrieval line item real rather than aspirational.
 
 ### 4.2 Why Moss specifically
 
 Retrieval answers one question per turn: *which rubric competency is this
 candidate demonstrating right now?* The answer steers the next question.
 
-- Under 10ms → the interviewer stays on-rubric at no perceptible cost.
+- Under 5ms → the interviewer stays on-rubric at no perceptible cost.
 - At 50ms (hosted vector DB) → either the budget breaks, or you stop retrieving
   and ask worse questions.
 
@@ -151,8 +151,8 @@ open behind the fixed greeting, so no turn ever pays for indexing.
 
 | ID | Requirement | Target | Measured |
 |---|---|---|---|
-| N1 | Turnaround, p95 | ≤160 ms | **12.6 ms** |
-| N2 | Rubric retrieval, p95 | ≤10 ms | **0.70 ms** |
+| N1 | Turnaround, p95 | ≤150 ms | **12.58 ms** |
+| N2 | Rubric retrieval, p95 | ≤5 ms | **1.29 ms** |
 | N3 | Barge-in drain | ≤15 ms | **0.036 ms** |
 | N4 | Barge-in detection | ≤30 ms sustained speech | 40 ms (2 frames) |
 | N5 | Unredacted PII at any boundary | 0 | **0** |
@@ -162,7 +162,7 @@ open behind the fixed greeting, so no turn ever pays for indexing.
 
 ### 5.3 Constraints
 
-- **C1 — Budget coherence.** Stage budgets must sum to exactly 160ms; enforced
+- **C1 — Budget coherence.** Stage budgets must sum to exactly 150ms; enforced
   at import, not by convention.
 - **C2 — No infrastructure for dev.** The full pipeline and full test suite run
   with zero services.
@@ -253,8 +253,8 @@ response.
 
 ### 7.2 Technical (gates CI)
 
-- Turnaround p95 ≤160ms, no turn beyond 2× budget.
-- Retrieval p95 ≤10ms.
+- Turnaround p95 ≤150ms, no turn beyond 2× budget.
+- Retrieval p95 ≤5ms.
 - Zero unredacted PII, zero false positives on the technical corpus.
 - 9/9 deterministic role routing.
 - 250 tests, zero warnings.
@@ -272,7 +272,7 @@ response.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Provider TTFT exceeds the speculation window | Turnaround degrades toward provider latency | Speculation absorbs 130ms; budget and alarms make the overage visible rather than silent |
+| Provider TTFT exceeds the speculation window | Turnaround degrades toward provider latency | Speculation absorbs 80ms; budget and alarms make the overage visible rather than silent |
 | Retrieval outage mid-call | Interviewer drifts off-rubric | Automatic fallback to the embedded index; tested explicitly for mid-call failure |
 | Accented or noisy audio reduces VAD accuracy | Early cut-off or missed turns | Adaptive noise floor, zero-crossing gate, asymmetric hysteresis; documented in `EXPLAINABILITY.md` |
 | Scrubber false positive destroys evidence | Competency scored unfairly low | Dedicated false-positive corpus in CI; zero tolerance |
@@ -299,11 +299,11 @@ OpenGAP compliance, 250 tests, reproducible benchmark, offline demo.
 ## 10. Appendix — measured results
 
 ```
-Retrieval (rubric lookup)      p50 0.59ms   p95 0.70ms   p99 0.81ms   budget 10ms    PASS
-Turnaround (with speculation)  p50 12.5ms   p95 12.6ms   p99 12.7ms   budget 160ms   PASS
-Turnaround (sequential)        p50 43.1ms   p95 43.5ms   p99 43.8ms   budget 160ms   PASS
+Retrieval (rubric lookup)      p50 1.11ms   p95 1.29ms   p99 1.42ms   budget 5ms     PASS
+Turnaround (with speculation)  p50 12.44ms  p95 12.58ms  p99 12.79ms  budget 150ms   PASS
+Turnaround (sequential)        p50 43.30ms  p95 43.57ms  p99 43.67ms  budget 150ms   PASS
 
-Speculation saves a median of 30.6ms per turn — 71% of the sequential cost.
+Speculation saves a median of 30.9ms per turn — 71% of the sequential cost.
 ```
 
 Reproduce with `python scripts/benchmark.py --iterations 60`. No credentials
@@ -312,6 +312,6 @@ required.
 **Measurement honesty:** these are measured against modelled component costs
 (30ms cognition TTFT, 12ms to first audio frame) on the offline providers. Real
 end-to-end turnaround adds whatever your inference provider's TTFT exceeds the
-130ms speculation window. The claim being made is not that physics was defeated;
+80ms speculation window. The claim being made is not that physics was defeated;
 it is that **the orchestration contributes ~13ms rather than ~1,500ms**, and
 every millisecond of retrieval moved off the network is a millisecond kept.

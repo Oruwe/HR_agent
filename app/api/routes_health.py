@@ -39,7 +39,7 @@ TURN_TURNAROUND_MS = Histogram(
     buckets=(10, 25, 50, 100, 160, 250, 500, 1000, 2000, 4000),
 )
 TURNS_OVER_BUDGET_TOTAL = Counter(
-    "hrte_turns_over_budget_total", "Turns whose turnaround exceeded the 160ms budget"
+    "hrte_turns_over_budget_total", "Turns whose turnaround exceeded the 150ms budget"
 )
 ACTIVE_SESSIONS = Gauge("hrte_active_sessions", "Currently open screening sessions")
 SESSIONS_CREATED_TOTAL = Counter("hrte_sessions_created_total", "Sessions created")
