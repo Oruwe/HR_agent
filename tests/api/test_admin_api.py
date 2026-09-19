@@ -64,6 +64,75 @@ def test_admin_session_evaluation_matches_candidate_facing_one(
     assert admin_response.json()["recommendation"] == candidate_response.json()["recommendation"]
 
 
+def test_admin_transcript_returns_ordered_turns(create_session, api_client: TestClient) -> None:
+    session = create_session()
+    headers = {"Authorization": f"Bearer {session['session_token']}"}
+    sid = session["session_id"]
+    api_client.post(
+        f"/api/sessions/{sid}/turns/text", json={"text": "hello there"}, headers=headers
+    )
+
+    response = api_client.get(f"/api/admin/sessions/{sid}/transcript")
+    assert response.status_code == 200
+    turns = response.json()
+    assert [t["speaker"] for t in turns] == ["agent", "candidate", "agent"]
+    assert turns[1]["text"] == "hello there"
+    assert turns == sorted(turns, key=lambda t: t["offset_ms"])
+
+
+def test_admin_transcript_on_unknown_session_is_404(api_client: TestClient) -> None:
+    response = api_client.get("/api/admin/sessions/does-not-exist/transcript")
+    assert response.status_code == 404
+
+
+def test_session_summary_carries_ranking_fields_only_after_close(
+    create_session, api_client: TestClient
+) -> None:
+    session = create_session()
+    headers = {"Authorization": f"Bearer {session['session_token']}"}
+    sid = session["session_id"]
+
+    row = next(s for s in api_client.get("/api/admin/sessions").json() if s["session_id"] == sid)
+    assert row["rubric_fit_index"] is None
+    assert row["recommendation"] is None
+
+    api_client.post(f"/api/sessions/{sid}/close", headers=headers)
+
+    row = next(s for s in api_client.get("/api/admin/sessions").json() if s["session_id"] == sid)
+    assert isinstance(row["rubric_fit_index"], float)
+    assert row["recommendation"] is not None
+
+
+def test_status_reports_cognition_degraded_when_live_calls_fall_back(
+    api_client: TestClient,
+) -> None:
+    """A configured-but-failing provider must not read as healthy.
+
+    This is the exact production incident this field exists for: the key was
+    set, so `cognition_configured` was True and the dashboard said "Live",
+    while every single Gemini call 4xx'd and each answer came from the canned
+    offline fallback.
+    """
+    from app.agent.cognition import record_cognition_fallback, reset_cognition_fallbacks
+
+    reset_cognition_fallbacks()
+    try:
+        body = api_client.get("/api/admin/status").json()
+        assert body["cognition_fallbacks"] == 0
+        assert body["cognition_degraded"] is False
+
+        record_cognition_fallback()
+        record_cognition_fallback()
+
+        body = api_client.get("/api/admin/status").json()
+        assert body["cognition_fallbacks"] == 2
+        # Offline by configuration is not "degraded" -- only a provider that
+        # was supposed to work and didn't.
+        assert body["cognition_degraded"] is body["cognition_configured"]
+    finally:
+        reset_cognition_fallbacks()
+
+
 def test_admin_token_gate(create_session, api_client: TestClient) -> None:
     import os
 

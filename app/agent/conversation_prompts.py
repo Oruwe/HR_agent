@@ -154,6 +154,33 @@ CLOSING_TEMPLATE = (
 )
 
 
+#: What used to live here was a single line -- "Reply in one sentence and ask
+#: one question. Use fewer than thirty words." -- tuned purely to keep
+#: cognition_max_tokens low for the latency budget. It worked, and it also
+#: produced an interviewer that never reacted to anything a candidate said: a
+#: checklist read aloud, not a conversation. Role assignment and scoring are
+#: deterministic in this codebase specifically so the *model* is free to be
+#: good at the one thing only it can do -- sound like a person who is actually
+#: listening. This is that instruction instead.
+NATURAL_CONVERSATION = """
+## Have a real conversation
+You already have genuine engineering judgment; use it. Before you ask
+anything, actually react to what they just said -- a specific number, a
+trade-off, a tool name. Push back a little if something doesn't add up, or
+say what's genuinely interesting about it, the way a senior engineer would in
+a real conversation. Then let your next question grow out of that reaction
+rather than jumping straight to the next rubric item.
+
+Vary how you ask. Two candidates who both mentioned NCCL tuning should not get
+two questions with the same shape. A real interviewer doesn't sound like a
+form.
+
+None of this is permission to ramble: two or three sentences is normal when
+their answer earned it, one is fine when it didn't. The floor is "sound like
+a person," not "hit a word count."
+""".strip()
+
+
 def build_fast_system_prompt(
     role: EngineeringRole,
     *,
@@ -161,24 +188,31 @@ def build_fast_system_prompt(
     covered: Sequence[str] = (),
     remaining_turns: int | None = None,
 ) -> str:
-    """Build the minimal live-turn instruction used by the latency-critical path.
+    """Build the live-turn instruction used by the latency-critical path.
 
-    Role scoring remains deterministic in the application; the model only has
-    to ask the next concise, job-relevant question.
+    Role assignment and competency scoring are deterministic elsewhere in the
+    application (see app/agent/interview_flow.py and app/schemas/roles.py) --
+    the model never decides what gets asked or how it is scored, only how it
+    sounds asking it. That separation is what makes it safe to let this
+    prompt optimise purely for a natural conversation instead of for brevity.
     """
     rubric = rubric_for(role)
     next_probe = next(
         (item.probe for item in rubric.competencies if item.key not in set(covered)),
         rubric.competencies[0].probe,
     )
-    session = f"Candidate: {candidate_alias}. Role: {rubric.title}. Next focus: {next_probe}"
+    session = (
+        f"You're screening {candidate_alias} for {rubric.title}. You've never met before. "
+        f"Once you've genuinely responded to what they just said, your next thing to get at is: "
+        f"{next_probe}"
+    )
     if remaining_turns is not None:
-        session += f" Remaining questions: {remaining_turns}."
+        session += f" You have roughly {remaining_turns} more question(s) in this call."
     return "\n\n".join(
         [
             load_soul(),
-            "## Live-turn protocol\nReply in one sentence and ask one question. "
-            "Use fewer than thirty words. Return plain spoken text only.",
+            VOICE_PROTOCOL,
+            NATURAL_CONVERSATION,
             GUARDRAILS,
             session,
         ]
@@ -197,6 +231,7 @@ __all__ = [
     "CLOSING_TEMPLATE",
     "GREETING_TEMPLATE",
     "GUARDRAILS",
+    "NATURAL_CONVERSATION",
     "SOUL_PATH",
     "VOICE_PROTOCOL",
     "build_fast_system_prompt",

@@ -66,6 +66,8 @@ class SessionRecord(Base):
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "has_evaluation": self.evaluation is not None,
+            "rubric_fit_index": self.evaluation.rubric_fit_index if self.evaluation else None,
+            "recommendation": self.evaluation.recommendation if self.evaluation else None,
         }
 
 

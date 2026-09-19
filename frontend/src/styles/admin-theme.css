@@ -1,0 +1,600 @@
+/* ==========================================================================
+   Admin Dashboard theme -- scoped entirely under .admin-shell.
+
+   This is a deliberately separate surface from the Candidate App: a manager
+   or hiring lead reviewing and ranking candidates after the fact, never
+   participating in a live interview. It gets its own chrome, its own palette
+   (white + purple, CRM-shaped), and its own layout primitives, all namespaced
+   under one class so nothing here can leak into -- or be affected by -- the
+   candidate-facing dark theme in tokens.css. Only the primitives that are
+   genuinely generic (box-sizing, focus rings) come from there; everything
+   visual is redeclared here on purpose.
+   ========================================================================== */
+
+.admin-shell {
+  --admin-bg: #faf9fd;
+  --admin-surface: #ffffff;
+  --admin-surface-sunken: #f4f2fa;
+  --admin-border: #e6e1f2;
+  --admin-text: #241c35;
+  --admin-text-dim: #6b6180;
+  --admin-text-faint: #9c93ad;
+
+  --admin-purple-50: #f5f2fe;
+  --admin-purple-100: #ede7fd;
+  --admin-purple-200: #d9cdfb;
+  --admin-purple-400: #9a6df5;
+  --admin-purple-500: #7c3aed;
+  --admin-purple-600: #6923d0;
+  --admin-purple-900: #2e1065;
+
+  --admin-green: #1a8754;
+  --admin-green-bg: #e9f7ef;
+  --admin-amber: #b3760a;
+  --admin-amber-bg: #fdf3e0;
+  --admin-red: #c23b3b;
+  --admin-red-bg: #fbebeb;
+
+  --admin-radius-sm: 6px;
+  --admin-radius-md: 10px;
+  --admin-radius-lg: 14px;
+  --admin-shadow: 0 1px 2px rgba(46, 16, 101, 0.04), 0 6px 20px rgba(46, 16, 101, 0.06);
+
+  color-scheme: light;
+  /* Mobile-first: the whole page scrolls as one column. At desktop widths
+     (the media query below) this becomes a fixed-height app layout whose
+     roster and transcript scroll independently, the way a mail client or
+     CRM does. Doing it the other way round collapses both panes into a
+     single grid row on narrow screens and they overlap. */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font-family: var(--font-ui, -apple-system, "Segoe UI", "Inter", system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.admin-shell a {
+  color: var(--admin-purple-600);
+}
+
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--admin-text);
+}
+
+.admin-shell p {
+  margin: 0;
+  color: var(--admin-text-dim);
+}
+
+/* ---- Header -------------------------------------------------------------- */
+
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  background: var(--admin-surface);
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--admin-purple-500), var(--admin-purple-900));
+  flex-shrink: 0;
+}
+
+.admin-brand-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.admin-brand-sub {
+  color: var(--admin-text-faint);
+  font-size: 12px;
+}
+
+/* At phone width the tagline and the wrapped brand name crowd the token
+   field out of the row; the name alone carries it. */
+@media (max-width: 560px) {
+  .admin-brand-sub {
+    display: none;
+  }
+
+  .admin-brand-name {
+    white-space: nowrap;
+  }
+
+  .admin-topbar {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .admin-token-input {
+    width: 120px;
+  }
+}
+
+.admin-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-topbar-right a {
+  font-size: 13px;
+  color: var(--admin-text-dim);
+  text-decoration: none;
+}
+
+.admin-topbar-right a:hover {
+  color: var(--admin-purple-600);
+}
+
+/* ---- Overall layout: ranked list left, selected candidate's chat right --- */
+
+.admin-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+@media (min-width: 900px) {
+  .admin-shell {
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-body {
+    display: grid;
+    grid-template-columns: 380px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+.admin-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 20px 28px 0;
+}
+
+.admin-stat-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  padding: 14px 16px;
+}
+
+.admin-stat-card-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--admin-text-faint);
+  margin-bottom: 4px;
+}
+
+.admin-stat-card-value {
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--admin-purple-600);
+}
+
+.admin-stat-card-value-alert {
+  color: var(--admin-red);
+}
+
+.admin-stat-card-note {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--admin-red);
+}
+
+/* ---- Candidate list (left pane) ------------------------------------------ */
+
+.admin-list-pane {
+  border-bottom: 1px solid var(--admin-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--admin-surface);
+  /* On a phone the roster is a bounded, scrollable strip so the transcript
+     below it stays reachable without scrolling past every candidate. */
+  max-height: 45vh;
+}
+
+@media (min-width: 900px) {
+  .admin-list-pane {
+    border-bottom: none;
+    border-right: 1px solid var(--admin-border);
+    max-height: none;
+  }
+}
+
+.admin-list-header {
+  padding: 18px 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-list-header h2 {
+  font-size: 16px;
+}
+
+.admin-sort-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-sort-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface-sunken);
+  color: var(--admin-text-dim);
+  cursor: pointer;
+}
+
+.admin-sort-btn.active {
+  background: var(--admin-purple-500);
+  border-color: var(--admin-purple-500);
+  color: #fff;
+}
+
+.admin-candidate-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  /* Reset the <button> default border first -- leaving it on renders a dark
+     outline around every row. */
+  border: none;
+  border-bottom: 1px solid var(--admin-border);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  background: none;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+}
+
+.admin-candidate-row:hover {
+  background: var(--admin-purple-50);
+}
+
+.admin-candidate-row.selected {
+  background: var(--admin-purple-50);
+  border-left-color: var(--admin-purple-500);
+}
+
+.admin-candidate-rank {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--admin-text-faint);
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.admin-candidate-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--admin-purple-100);
+  color: var(--admin-purple-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 650;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.admin-candidate-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-candidate-name {
+  display: block;
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-candidate-role {
+  display: block;
+  font-size: 12px;
+  color: var(--admin-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-candidate-score {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--admin-purple-600);
+  flex-shrink: 0;
+}
+
+.admin-empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--admin-text-faint);
+  font-size: 13px;
+}
+
+/* ---- Detail pane (right): summary + chat transcript ----------------------- */
+
+.admin-detail-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.admin-detail-header {
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid var(--admin-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-detail-heading h1 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-badge-advance {
+  background: var(--admin-green-bg);
+  color: var(--admin-green);
+}
+
+.admin-badge-hold {
+  background: var(--admin-amber-bg);
+  color: var(--admin-amber);
+}
+
+.admin-badge-reject {
+  background: var(--admin-red-bg);
+  color: var(--admin-red);
+}
+
+.admin-badge-neutral {
+  background: var(--admin-surface-sunken);
+  color: var(--admin-text-dim);
+}
+
+.admin-score-strip {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.admin-score-strip-item {
+  text-align: right;
+}
+
+.admin-score-strip-value {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--admin-purple-600);
+}
+
+.admin-score-strip-label {
+  font-size: 11px;
+  color: var(--admin-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.admin-detail-body {
+  padding: 20px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.admin-competency-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-competency-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-competency-label {
+  font-size: 13px;
+  color: var(--admin-text-dim);
+}
+
+.admin-competency-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--admin-surface-sunken);
+  overflow: hidden;
+}
+
+.admin-competency-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--admin-purple-400), var(--admin-purple-600));
+}
+
+.admin-competency-value {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--admin-text-faint);
+}
+
+.admin-section-title {
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--admin-text-faint);
+  margin-bottom: 12px;
+}
+
+.admin-limitations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--admin-text-dim);
+}
+
+.admin-limitations li::before {
+  content: "\2022";
+  color: var(--admin-purple-500);
+  margin-right: 8px;
+}
+
+/* ---- The "chat": read-only transcript, styled like a message thread ------ */
+
+.admin-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-chat-bubble-row {
+  display: flex;
+}
+
+.admin-chat-bubble-row.agent {
+  justify-content: flex-end;
+}
+
+.admin-chat-bubble-row.candidate {
+  justify-content: flex-start;
+}
+
+.admin-chat-bubble {
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: var(--admin-radius-lg);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.admin-chat-bubble-row.agent .admin-chat-bubble {
+  background: var(--admin-purple-500);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.admin-chat-bubble-row.candidate .admin-chat-bubble {
+  background: var(--admin-surface-sunken);
+  color: var(--admin-text);
+  border-bottom-left-radius: 4px;
+}
+
+.admin-chat-meta {
+  font-size: 10.5px;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+.admin-chat-bubble-row.agent .admin-chat-meta {
+  text-align: right;
+}
+
+/* ---- Shared bits ----------------------------------------------------------- */
+
+.admin-panel {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  padding: 16px 18px;
+}
+
+.admin-error-banner {
+  margin: 16px 28px 0;
+  padding: 10px 14px;
+  border-radius: var(--admin-radius-sm);
+  background: var(--admin-red-bg);
+  color: var(--admin-red);
+  font-size: 13px;
+}
+
+.admin-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--admin-text-faint);
+  font-size: 13px;
+}
+
+.admin-token-input {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--admin-radius-sm);
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface-sunken);
+  color: var(--admin-text);
+  width: 160px;
+}
+
+.admin-token-input:focus {
+  outline: none;
+  border-color: var(--admin-purple-400);
+}

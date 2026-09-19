@@ -152,9 +152,36 @@ class Settings(BaseModel):
 
     # -- cognition ------------------------------------------------------------
     google_api_key: str = ""
-    cognition_model: str = "gemini-2.0-flash"
-    cognition_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    cognition_max_tokens: int = Field(default=48, gt=0)
+    #: A floating alias, not a pinned version, and deliberately so. This
+    #: defaulted to "gemini-2.0-flash" until that model was retired out from
+    #: under the deployment: every call 400'd, the interview fell back to the
+    #: canned offline answer, and (before the degradation was made visible)
+    #: nothing said so. "gemini-2.5-flash" is already gone the same way --
+    #: the API now answers 404 "no longer available to new users" for it.
+    #: A pin buys reproducibility only for as long as the pin exists, and
+    #: nothing here needs it: role routing and competency scoring are
+    #: deterministic in code, so a model rotation can change how a question
+    #: is phrased but never what is asked or how it is scored. Pin a specific
+    #: version via HRTE_COGNITION_MODEL if you want to freeze phrasing.
+    cognition_model: str = "gemini-flash-latest"
+    #: 0.7 rather than a near-zero value: the *decisions* here (which
+    #: competency to probe, how to score one) are deterministic and made in
+    #: code, never by the model (see app/agent/interview_flow.py) -- so the
+    #: model has room to vary its phrasing turn to turn without touching
+    #: anything that has to be reproducible or auditable.
+    cognition_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    #: 150 (what .env.example documented, against a code default of 48) still
+    #: truncated mid-sentence against the live API -- "Which specific NCCL
+    #: environment variables" and then nothing. 250 leaves the model room to
+    #: finish its own sentence; it stops naturally well before the cap, so
+    #: this is a ceiling, not a target.
+    cognition_max_tokens: int = Field(default=250, gt=0)
+    #: Thinking tokens are billed out of max_output_tokens, so a reasoning
+    #: model can burn the whole allowance before emitting a single visible
+    #: character. 0 disables it, which is right for a real-time interview:
+    #: the turn is one short spoken question. None omits the setting
+    #: entirely, for a model that rejects it.
+    cognition_thinking_budget: int | None = Field(default=0, ge=0)
     fast_path: bool = True
 
     # -- synthesis ------------------------------------------------------------
@@ -258,9 +285,10 @@ def load_settings() -> Settings:
         livekit_api_secret=_env("LIVEKIT_API_SECRET"),
         room_prefix=_env("HRTE_ROOM_PREFIX", "screening"),
         google_api_key=_env("GOOGLE_API_KEY"),
-        cognition_model=_env("HRTE_COGNITION_MODEL", "gemini-2.0-flash"),
-        cognition_temperature=_env_float("HRTE_COGNITION_TEMPERATURE", 0.2),
-        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 48),
+        cognition_model=_env("HRTE_COGNITION_MODEL", "gemini-flash-latest"),
+        cognition_temperature=_env_float("HRTE_COGNITION_TEMPERATURE", 0.7),
+        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 250),
+        cognition_thinking_budget=_env_int("HRTE_COGNITION_THINKING_BUDGET", 0),
         fast_path=_env("HRTE_FAST_PATH", "true").lower() not in {"0", "false", "no"},
         speech_engine=SpeechEngine(_env("HRTE_SPEECH_ENGINE", "mock") or "mock"),
         speech_ws_url=_env("HRTE_SPEECH_WS_URL"),

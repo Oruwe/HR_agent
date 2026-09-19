@@ -80,6 +80,17 @@ class SessionSummary(BaseModel):
     created_at: int
     updated_at: int
     has_evaluation: bool
+    #: Populated once close() has run; None for an active session. Lets the
+    #: admin dashboard rank candidates without a per-row evaluation fetch.
+    rubric_fit_index: float | None = None
+    recommendation: str | None = None
+
+
+class TranscriptTurnOut(BaseModel):
+    speaker: str
+    text: str
+    offset_ms: float
+    turnaround_ms: float | None = None
 
 
 class LatencyStagesOut(BaseModel):
@@ -91,7 +102,14 @@ class LatencyStagesOut(BaseModel):
 class SystemStatusResponse(BaseModel):
     environment: str
     offline: bool
+    #: "An API key is set" -- NOT "that key works". See cognition_degraded.
     cognition_configured: bool
+    #: True once a live cognition call has failed and been served by the
+    #: offline fallback instead. A configured-but-degraded deployment answers
+    #: every candidate with the same canned sentence, and without this it
+    #: looks identical to a healthy one.
+    cognition_degraded: bool = False
+    cognition_fallbacks: int = 0
     moss_configured: bool
     qdrant_configured: bool
     transport_configured: bool
@@ -113,6 +131,7 @@ __all__ = [
     "LatencyStagesOut",
     "SessionSummary",
     "SystemStatusResponse",
+    "TranscriptTurnOut",
     "TurnRequest",
     "TurnResponse",
 ]

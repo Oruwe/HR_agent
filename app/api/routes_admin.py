@@ -20,11 +20,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
+from app.agent.cognition import cognition_fallback_count
 from app.api.schemas import (
     EvaluationResponse,
     LatencyStagesOut,
     SessionSummary,
     SystemStatusResponse,
+    TranscriptTurnOut,
 )
 from app.api.session_store import SessionStore, get_session_store
 from app.config import STAGE_BUDGETS_MS, Settings, get_settings
@@ -60,6 +62,34 @@ def list_sessions(
         stmt = stmt.where(SessionRecord.status == status_filter)
     rows = db.execute(stmt).scalars().all()
     return [SessionSummary(**row.to_summary()) for row in rows]
+
+
+@router.get(
+    "/sessions/{session_id}/transcript",
+    response_model=list[TranscriptTurnOut],
+    dependencies=[Depends(_require_admin)],
+)
+def admin_get_transcript(
+    session_id: str, db: DbSession = Depends(get_db)
+) -> list[TranscriptTurnOut]:
+    """The turn-by-turn conversation, already PII-scrubbed at ingest.
+
+    Ordered by `offset_ms` via the `turns` relationship's own ordering
+    (see SessionRecord.turns in app/db/models.py), so this is chronological
+    without a separate ORDER BY here.
+    """
+    record = db.get(SessionRecord, session_id)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such session.")
+    return [
+        TranscriptTurnOut(
+            speaker=turn.speaker,
+            text=turn.text,
+            offset_ms=turn.offset_ms,
+            turnaround_ms=turn.turnaround_ms,
+        )
+        for turn in record.turns
+    ]
 
 
 @router.get(
@@ -100,10 +130,13 @@ async def system_status(
     settings: Settings = Depends(get_settings),
     store: SessionStore = Depends(get_session_store),
 ) -> SystemStatusResponse:
+    fallbacks = cognition_fallback_count()
     return SystemStatusResponse(
         environment=settings.environment,
         offline=settings.offline,
         cognition_configured=settings.cognition_configured,
+        cognition_degraded=settings.cognition_configured and fallbacks > 0,
+        cognition_fallbacks=fallbacks,
         moss_configured=settings.moss_configured,
         qdrant_configured=settings.qdrant_configured,
         transport_configured=settings.transport_configured,
