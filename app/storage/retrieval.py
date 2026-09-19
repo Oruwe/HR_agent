@@ -236,9 +236,12 @@ class MossRetriever:
         return self.settings.moss_index
 
     async def warm(self) -> None:
-        await self._fallback.warm()
+        # Moss owns the live rubric index. Do not initialise the archival
+        # fallback when Moss is healthy: it adds needless startup work and
+        # creates an accidental dependency on a second retrieval system.
         if not self.settings.moss_configured:
             self._degraded = True
+            await self._fallback.warm()
             return
         try:  # pragma: no cover - requires the optional moss dependency
             from moss import MossClient  # type: ignore[import-not-found]
@@ -269,6 +272,7 @@ class MossRetriever:
             self._client = None
             self._ready = False
             self._degraded = True
+            await self._fallback.warm()
 
     async def search(self, evidence: str, limit: int = 3) -> list[RubricHit]:
         if not evidence.strip():
