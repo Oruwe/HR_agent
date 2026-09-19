@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 #: Hard ceiling, in milliseconds, for a conversational turn measured as
 #: "candidate stops speaking" -> "first byte of agent audio handed to the
 #: egress transport". Exceeding this is a defect, not a slow day.
-TOTAL_TURNAROUND_BUDGET_MS: Final[float] = 160.0
+TOTAL_TURNAROUND_BUDGET_MS: Final[float] = 150.0
 
 
 class Stage(StrEnum):
@@ -51,13 +51,13 @@ class Stage(StrEnum):
 #: Per-stage ceilings. These sum to exactly TOTAL_TURNAROUND_BUDGET_MS, so a
 #: stage that overruns has provably stolen headroom from a downstream stage.
 STAGE_BUDGETS_MS: Final[dict[Stage, float]] = {
-    Stage.TRANSPORT_INGRESS: 20.0,  # LiveKit WebRTC PeerConnection, edge -> SFU -> worker
-    Stage.VAD_ENDPOINT: 25.0,  # Silero VAD v5 endpoint decision (ONNX, CPU)
-    Stage.AUDIO_INGESTION: 15.0,  # dual-track 20ms ring buffer assembly
-    Stage.VECTOR_MATCH: 10.0,  # Qdrant HNSW, in-memory
+    Stage.TRANSPORT_INGRESS: 15.0,  # LiveKit WebRTC PeerConnection, edge -> SFU -> worker
+    Stage.VAD_ENDPOINT: 20.0,  # Silero VAD v5 endpoint decision (ONNX, CPU)
+    Stage.AUDIO_INGESTION: 10.0,  # dual-track 20ms ring buffer assembly
+    Stage.VECTOR_MATCH: 5.0,  # in-memory rubric lookup
     Stage.COGNITION_TTFT: 45.0,  # streaming LLM time-to-first-token
     Stage.SPEECH_SYNTHESIS: 35.0,  # speech-to-speech first audio frame
-    Stage.TRANSPORT_EGRESS: 10.0,  # jitter buffer + WebRTC publish
+    Stage.TRANSPORT_EGRESS: 20.0,  # jitter buffer + WebRTC publish
 }
 
 #: Stages whose cost is paid *concurrently with the candidate still speaking*
@@ -140,8 +140,8 @@ class Settings(BaseModel):
 
     # -- latency governance ---------------------------------------------------
     latency_budget_ms: float = Field(default=TOTAL_TURNAROUND_BUDGET_MS, gt=0)
-    endpoint_silence_ms: float = Field(default=250.0, gt=0)
-    speculative_silence_ms: float = Field(default=120.0, gt=0)
+    endpoint_silence_ms: float = Field(default=120.0, gt=0)
+    speculative_silence_ms: float = Field(default=40.0, gt=0)
     barge_in_ms: float = Field(default=30.0, gt=0)
 
     # -- transport ------------------------------------------------------------
@@ -154,7 +154,8 @@ class Settings(BaseModel):
     google_api_key: str = ""
     cognition_model: str = "gemini-2.0-flash"
     cognition_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    cognition_max_tokens: int = Field(default=150, gt=0)
+    cognition_max_tokens: int = Field(default=48, gt=0)
+    fast_path: bool = True
 
     # -- synthesis ------------------------------------------------------------
     # NOTE: these configure MOSS-Speech, the open speech-to-speech model. It is
@@ -249,8 +250,8 @@ def load_settings() -> Settings:
         environment=_env("HRTE_ENV", "development"),
         log_level=_env("HRTE_LOG_LEVEL", "INFO").upper(),
         latency_budget_ms=_env_float("HRTE_LATENCY_BUDGET_MS", TOTAL_TURNAROUND_BUDGET_MS),
-        endpoint_silence_ms=_env_float("HRTE_ENDPOINT_SILENCE_MS", 250.0),
-        speculative_silence_ms=_env_float("HRTE_SPECULATIVE_SILENCE_MS", 120.0),
+        endpoint_silence_ms=_env_float("HRTE_ENDPOINT_SILENCE_MS", 120.0),
+        speculative_silence_ms=_env_float("HRTE_SPECULATIVE_SILENCE_MS", 40.0),
         barge_in_ms=_env_float("HRTE_BARGE_IN_MS", 30.0),
         livekit_url=_env("LIVEKIT_URL"),
         livekit_api_key=_env("LIVEKIT_API_KEY"),
@@ -259,7 +260,8 @@ def load_settings() -> Settings:
         google_api_key=_env("GOOGLE_API_KEY"),
         cognition_model=_env("HRTE_COGNITION_MODEL", "gemini-2.0-flash"),
         cognition_temperature=_env_float("HRTE_COGNITION_TEMPERATURE", 0.2),
-        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 150),
+        cognition_max_tokens=_env_int("HRTE_COGNITION_MAX_TOKENS", 48),
+        fast_path=_env("HRTE_FAST_PATH", "true").lower() not in {"0", "false", "no"},
         speech_engine=SpeechEngine(_env("HRTE_SPEECH_ENGINE", "mock") or "mock"),
         speech_ws_url=_env("HRTE_SPEECH_WS_URL"),
         speech_api_key=_env("HRTE_SPEECH_API_KEY"),
