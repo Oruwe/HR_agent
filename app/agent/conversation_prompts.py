@@ -154,6 +154,37 @@ CLOSING_TEMPLATE = (
 )
 
 
+
+def build_fast_system_prompt(
+    role: EngineeringRole,
+    *,
+    candidate_alias: str = "the candidate",
+    covered: Sequence[str] = (),
+    remaining_turns: int | None = None,
+) -> str:
+    """Build the minimal live-turn instruction used by the latency-critical path.
+
+    Role scoring remains deterministic in the application; the model only has
+    to ask the next concise, job-relevant question.
+    """
+    rubric = rubric_for(role)
+    next_probe = next(
+        (item.probe for item in rubric.competencies if item.key not in set(covered)),
+        rubric.competencies[0].probe,
+    )
+    session = f"Candidate: {candidate_alias}. Role: {rubric.title}. Next focus: {next_probe}"
+    if remaining_turns is not None:
+        session += f" Remaining questions: {remaining_turns}."
+    return "\n\n".join(
+        [
+            load_soul(),
+            "## Live-turn protocol\nReply in one sentence and ask one question. "
+            "Use fewer than thirty words. Return plain spoken text only.",
+            GUARDRAILS,
+            session,
+        ]
+    )
+
 def greeting(role: EngineeringRole) -> str:
     return GREETING_TEMPLATE
 
@@ -168,6 +199,7 @@ __all__ = [
     "GUARDRAILS",
     "SOUL_PATH",
     "VOICE_PROTOCOL",
+    "build_fast_system_prompt",
     "build_system_prompt",
     "closing",
     "greeting",
