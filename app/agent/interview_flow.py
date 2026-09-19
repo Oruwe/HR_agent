@@ -47,6 +47,16 @@ class InterviewFlow:
     scores: dict[str, float] = field(default_factory=dict)
     asked: list[str] = field(default_factory=list)
     termination_reason: str = ""
+    #: The fast live path (app.config.Settings.fast_path) strips tool schemas
+    #: from the model call, so record_candidate_competency -- the only caller
+    #: of `record()` -- never fires there and `scores` never populates. Without
+    #: this flag, `uncovered()` would never shrink: the interviewer would probe
+    #: the same highest-weight competency forever and the stage machine could
+    #: never leave COMPETENCY_PROBE. On the fast path, "asked" is therefore
+    #: treated as "handled enough to move past" for probe selection; off the
+    #: fast path, a live score from the model is still required, so a
+    #: half-answered competency keeps getting re-probed as originally designed.
+    fast_path: bool = False
 
     @property
     def rubric(self):
@@ -71,6 +81,8 @@ class InterviewFlow:
         competencies would be ordered by dict insertion.
         """
         done = set(self.covered())
+        if self.fast_path:
+            done |= set(self.asked)
         pending = [c for c in self.rubric.competencies if c.key not in done]
         return sorted(pending, key=lambda c: (-c.weight, c.key))
 

@@ -152,7 +152,9 @@ class ScreeningOrchestrator:
         self.retriever = retriever or build_retriever(self.settings, self.store)
         self.cognition = cognition or build_cognition(self.settings)
         self.tracer = tracer or LangfuseTracer(session.session_id, self.settings)
-        self.flow = flow or InterviewFlow(role=session.role, max_turns=max_turns)
+        self.flow = flow or InterviewFlow(
+            role=session.role, max_turns=max_turns, fast_path=self.settings.fast_path
+        )
         self.latency = LatencyRecorder(self.settings.latency_budget_ms)
 
         self._draft: SpeculativeDraft | None = None
