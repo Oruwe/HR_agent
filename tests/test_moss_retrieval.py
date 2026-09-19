@@ -443,7 +443,7 @@ def test_moss_retrieval_is_within_the_retrieval_budget(
 def test_retrieval_budget_is_the_declared_stage_budget() -> None:
     from app.config import STAGE_BUDGETS_MS, Stage
 
-    assert RETRIEVAL_BUDGET_MS == STAGE_BUDGETS_MS[Stage.VECTOR_MATCH]
+    assert STAGE_BUDGETS_MS[Stage.VECTOR_MATCH] == RETRIEVAL_BUDGET_MS
 
 
 # =============================================================================
