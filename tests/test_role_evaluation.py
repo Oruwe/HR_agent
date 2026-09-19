@@ -13,6 +13,7 @@ import pytest
 
 from app.schemas.candidate import CandidateProfile, ScreeningSession, pseudonym_for
 from app.schemas.evaluation import (
+    PII_EXEMPT_PAYLOAD_KEYS,
     CandidateEvaluation,
     CompetencyScore,
     EvidenceSource,
@@ -291,6 +292,56 @@ def test_flagged_limitations_are_scrubbed() -> None:
         flagged_limitations=["Reachable only at priya@example.com"],
     )
     assert "priya@example.com" not in evaluation.flagged_limitations[0]
+
+
+def test_candidate_id_uuid_is_exempt_from_the_egress_pii_scan() -> None:
+    """A candidate_id is a uuid.uuid4() string, never candidate-authored text.
+
+    The scrubber's bare Indian-passport pattern (one letter, seven digits, no
+    context marker required) matches a UUID hex fragment by pure chance often
+    enough to matter -- this exact id was one such fragment, caught by a
+    reproduction sweep that failed the offline demo's self-audit roughly one
+    run in fifteen. It must not be treated as a leak.
+    """
+    from app.security.pii_scrubber import PiiKind, scrub
+
+    candidate_id = "c9849842-bdb0-4e89-a4f9-7eb55af8ddfd"
+    assert scrub(candidate_id).findings[0].kind is PiiKind.PASSPORT, (
+        "fixture no longer reproduces the false positive -- pick a new id"
+    )
+    assert frozenset({"candidate_id"}) == PII_EXEMPT_PAYLOAD_KEYS
+
+    store = HybridVectorStore()
+    store.ensure_collection()
+    payload = {
+        "candidate_id": candidate_id,
+        "sanitized_name": "Candidate_154",
+        "target_role": EngineeringRole.AI_ML_SYSTEMS_ENGINEER.value,
+        "competency_scores": {"distributed_training": 0.88},
+        "rubric_fit_index": 0.8227,
+        "flagged_limitations": [],
+        "interview_timestamp": 1789817333,
+    }
+    store.upsert_candidate(payload, evidence="FSDP, vLLM, HNSW")  # must not raise
+
+
+def test_upsert_candidate_still_rejects_real_pii_elsewhere_in_the_payload() -> None:
+    """The candidate_id exemption must not widen into a blanket bypass."""
+    from app.security.pii_scrubber import SecurityBreachException
+
+    store = HybridVectorStore()
+    store.ensure_collection()
+    payload = {
+        "candidate_id": "11111111-2222-3333-4444-555555555555",
+        "sanitized_name": "Candidate_001",
+        "target_role": EngineeringRole.AI_ML_SYSTEMS_ENGINEER.value,
+        "competency_scores": {"distributed_training": 0.88},
+        "rubric_fit_index": 0.5,
+        "flagged_limitations": ["Reachable only at priya@example.com"],
+        "interview_timestamp": 1789817333,
+    }
+    with pytest.raises(SecurityBreachException):
+        store.upsert_candidate(payload, evidence="FSDP, vLLM, HNSW")
 
 
 def test_candidate_profile_scrubs_on_ingest() -> None:

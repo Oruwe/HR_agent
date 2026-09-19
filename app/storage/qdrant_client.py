@@ -29,6 +29,7 @@ from typing import Any
 import numpy as np
 
 from app.config import Settings, get_settings
+from app.schemas.evaluation import PII_EXEMPT_PAYLOAD_KEYS
 from app.schemas.roles import ROLE_RUBRICS, EngineeringRole
 from app.security.pii_scrubber import assert_zero_pii
 from app.storage.embeddings import (
@@ -443,8 +444,16 @@ class HybridVectorStore:
         The guard walks the payload's string leaves *and keys*. It is the last
         checkpoint before data becomes durable, and durable is the one state
         you cannot take back.
+
+        :data:`PII_EXEMPT_PAYLOAD_KEYS` (``candidate_id``) is skipped rather
+        than scanned: it is a machine-generated UUID that cannot legitimately
+        contain PII, and the scrubber's loose passport pattern (one letter,
+        seven digits, no context marker) matches a UUID hex fragment by
+        chance often enough to intermittently drop a clean evaluation.
         """
         for key, value in payload.items():
+            if key in PII_EXEMPT_PAYLOAD_KEYS:
+                continue
             assert_zero_pii(str(key), boundary="qdrant.payload_key")
             if isinstance(value, str):
                 assert_zero_pii(value, boundary=f"qdrant.payload[{key}]")

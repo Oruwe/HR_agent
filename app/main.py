@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator, Sequence
 from app.agent.cognition import MockCognition, ToolCall, build_cognition
 from app.agent.orchestrator import ScreeningOrchestrator, new_session
 from app.config import STAGE_BUDGETS_MS, TOTAL_TURNAROUND_BUDGET_MS, Settings, Stage, get_settings
+from app.schemas.evaluation import PII_EXEMPT_PAYLOAD_KEYS
 from app.schemas.roles import ROLE_RUBRICS, EngineeringRole
 from app.security.pii_scrubber import scrub
 from app.telemetry.metrics import budget_table
@@ -199,7 +200,14 @@ async def run_demo(settings: Settings, turns: int = 5) -> int:
     for turn_record in session.transcript:
         result = scrub(turn_record.text)
         leaks += len(result.findings)
-    payload_leaks = len(scrub(str(evaluation.to_payload())).findings)
+    # Mirrors the production guard in HybridVectorStore.upsert_candidate: the
+    # audit must skip the same PII_EXEMPT_PAYLOAD_KEYS, or it would flag the
+    # opaque candidate_id UUID as a false-positive "leak" that production
+    # correctly ignores -- see app.schemas.evaluation.PII_EXEMPT_PAYLOAD_KEYS.
+    audited_payload = {
+        k: v for k, v in evaluation.to_payload().items() if k not in PII_EXEMPT_PAYLOAD_KEYS
+    }
+    payload_leaks = len(scrub(str(audited_payload)).findings)
     print(f"Transcript lines scanned : {len(session.transcript)}")
     print(f"Unredacted PII in transcript : {leaks}")
     print(f"Unredacted PII in stored payload : {payload_leaks}")
