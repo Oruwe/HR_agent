@@ -1,0 +1,4 @@
+spec_version: 0.1.0
+name: hr-talent-evaluator
+version: "1.0.0"
+description: Autonomous voice-enabled HR screening agent that evaluates candidate resumes against technical competencies.

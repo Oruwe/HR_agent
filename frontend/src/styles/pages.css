@@ -1,0 +1,353 @@
+.app-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+}
+
+/* ---- Intake ---------------------------------------------------------- */
+
+.intake-page {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.intake-hero h1 {
+  font-size: 28px;
+  margin-bottom: var(--space-2);
+}
+
+.intake-hero p {
+  max-width: 60ch;
+}
+
+.intake-form {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.intake-footnote {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+/* ---- Interview --------------------------------------------------------- */
+
+.interview-page {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: calc(100vh - 140px);
+}
+
+.interview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+}
+
+.interview-role {
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.transcript-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 85%;
+}
+
+.transcript-agent {
+  align-self: flex-start;
+}
+
+.transcript-candidate {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.transcript-speaker {
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+.transcript-bubble {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--ink-800);
+  border: 1px solid var(--ink-700);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.transcript-candidate .transcript-bubble {
+  background: rgba(232, 163, 61, 0.08);
+  border-color: var(--signal-amber-dim);
+}
+
+.transcript-thinking {
+  color: var(--ink-500);
+  font-style: italic;
+}
+
+.transcript-turnaround {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+.interview-controls {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mic-btn {
+  align-self: flex-start;
+}
+
+.mic-btn-active {
+  border-color: var(--over-budget-red);
+  color: var(--over-budget-red);
+  animation: pulse-mic 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-mic {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 106, 95, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(224, 106, 95, 0);
+  }
+}
+
+.mic-error {
+  font-size: 12px;
+  color: var(--over-budget-red);
+  margin: 0;
+}
+
+.interview-text-fallback {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.interview-text-fallback textarea {
+  flex: 1;
+  resize: none;
+}
+
+.end-call-btn {
+  align-self: flex-end;
+}
+
+.interview-finished {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+/* ---- Results ------------------------------------------------------------ */
+
+.results-page {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.results-summary {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.results-summary h1 {
+  font-size: 24px;
+}
+
+.results-scores {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.score-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 40px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 13px;
+}
+
+.score-bar-track {
+  height: 6px;
+  background: var(--ink-700);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  background: var(--signal-amber);
+}
+
+.score-value {
+  text-align: right;
+  color: var(--ink-500);
+}
+
+.results-limitations {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--paper-200);
+  font-size: 14px;
+}
+
+/* ---- Admin dashboard ----------------------------------------------------- */
+
+.admin-dashboard {
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.admin-back-link {
+  color: var(--ink-500);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+
+.admin-stat {
+  padding: var(--space-4);
+}
+
+.admin-stat-label {
+  font-size: 12px;
+  color: var(--ink-500);
+  margin-bottom: var(--space-1);
+}
+
+.admin-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.admin-capabilities {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.capability-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.stage-budget-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.stage-budget-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 60px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 12px;
+}
+
+.stage-budget-label {
+  text-transform: capitalize;
+  color: var(--paper-200);
+}
+
+.stage-budget-track {
+  height: 6px;
+  background: var(--ink-700);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.stage-budget-fill {
+  height: 100%;
+  background: var(--on-budget-cyan);
+}
+
+.stage-budget-value {
+  text-align: right;
+  color: var(--ink-500);
+}
+
+.admin-sessions {
+  padding: var(--space-5);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.admin-table th {
+  text-align: left;
+  color: var(--ink-500);
+  font-weight: 500;
+  font-size: 11px;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--ink-700);
+}
+
+.admin-table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--ink-800);
+}
+
+@media (max-width: 640px) {
+  .interview-page {
+    height: auto;
+  }
+  .score-row,
+  .stage-budget-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

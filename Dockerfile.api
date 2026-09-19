@@ -1,0 +1,66 @@
+# =============================================================================
+# hr-talent-evaluator -- API Gateway image (FastAPI + Primary DB + full voice
+# pipeline). Separate from the top-level Dockerfile, which builds the minimal
+# offline-demo/worker image (`python -m app.main demo`) with just the core
+# dependencies. This image installs the full requirements.txt: the API layer,
+# SQLAlchemy/Alembic, and every optional provider (Gemini, Moss, Qdrant,
+# Deepgram, Langfuse) -- all of which still degrade to their offline fallback
+# with no credentials configured, per app/config.py.
+# =============================================================================
+
+FROM python:3.11-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /build
+
+# Build tooling for packages that compile from source on some platforms
+# (e.g. onnxruntime, psycopg2-binary wheels usually cover this, but keep the
+# toolchain available so a missing wheel doesn't fail the build silently).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN python -m venv /opt/venv \
+ && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
+ && /opt/venv/bin/pip install -r requirements.txt
+
+FROM python:3.11-slim AS runtime
+
+LABEL org.opencontainers.image.title="hr-talent-evaluator-api" \
+      org.opencontainers.image.description="API Gateway: Candidate App + Admin Dashboard backend" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    HRTE_ENV=production \
+    HRTE_PII_MODE=strict \
+    HRTE_DATA_DIR=/data
+
+RUN useradd --create-home --uid 10001 screener \
+ && mkdir -p /data && chown screener:screener /data
+
+COPY --from=builder /opt/venv /opt/venv
+
+WORKDIR /app
+COPY --chown=screener:screener agent.yaml SOUL.md EXPLAINABILITY.md README.md alembic.ini ./
+COPY --chown=screener:screener app ./app
+COPY --chown=screener:screener scripts ./scripts
+COPY --chown=screener:screener docs ./docs
+
+USER screener
+VOLUME ["/data"]
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)" || exit 1
+
+# Run migrations then start the API. `sh -c` because HEALTHCHECK/CMD need the
+# venv's uvicorn on PATH, and this keeps the release-process migration step
+# (see docs/DEPLOYMENT.md) visible in the container's own startup, not hidden
+# inside app startup code.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.api.app:app --host 0.0.0.0 --port 8000"]

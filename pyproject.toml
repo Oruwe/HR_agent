@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hr-talent-evaluator"
+version = "1.0.0"
+description = "Autonomous voice-enabled HR screening agent that evaluates candidate resumes against technical competencies."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+keywords = ["opengap", "voice-agent", "livekit", "webrtc", "hr-screening", "low-latency"]
+
+dependencies = [
+  "pydantic>=2.6",
+  "PyYAML>=6.0",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# Real-time transport + audio DSP.
+voice = [
+  "livekit>=0.17",
+  "livekit-api>=0.7",
+  "livekit-agents>=0.11",
+  "onnxruntime>=1.17",
+]
+# Hot-path retrieval runtime (sub-10ms, no vector database).
+retrieval = [
+  "moss>=0.1",
+]
+# Cognition + cold-archive vector store.
+cognition = [
+  "google-genai>=0.3",
+  "qdrant-client>=1.9",
+]
+# Observability.
+telemetry = [
+  "langfuse>=2.36",
+  "opentelemetry-sdk>=1.24",
+  "opentelemetry-exporter-otlp>=1.24",
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.4",
+]
+all = [
+  "hr-talent-evaluator[voice,retrieval,cognition,telemetry,dev]",
+]
+
+[project.scripts]
+hr-talent-evaluator = "app.main:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "benchmark: statistical latency benchmarks (slower, percentile based)",
+  "integration: requires optional third-party services (livekit/qdrant/gemini)",
+]
+# Quality gate: the suite must run clean. Any warning is an error.
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501", "B008"]

@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+.env.local
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.onnx
+qdrant_storage/
+.DS_Store
+
+# API Gateway local SQLite data
+/data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local

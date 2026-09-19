@@ -1,0 +1,87 @@
+# =============================================================================
+# Full stack, one command: `docker compose up --build`.
+#
+# Default profile: API Gateway (SQLite, on a named volume) + frontend. Zero
+# external services required, matching the rest of this project's "works with
+# nothing configured" philosophy -- everything else (LLM, Moss, STT,
+# telemetry) runs in its offline/mock mode until real credentials are set in
+# .env.
+#
+# `--profile postgres` swaps SQLite for a real Postgres container.
+# `--profile redis` adds the optional Session State mirror.
+# Both are opt-in, not required: app/api/session_store.py and app/db/engine.py
+# already degrade cleanly without them.
+# =============================================================================
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      HRTE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-}
+      REDIS_URL: ${REDIS_URL:-}
+      HRTE_CORS_ORIGINS: ${HRTE_CORS_ORIGINS:-http://localhost:5173}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      MOSS_PROJECT_ID: ${MOSS_PROJECT_ID:-}
+      MOSS_PROJECT_KEY: ${MOSS_PROJECT_KEY:-}
+      QDRANT_URL: ${QDRANT_URL:-}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      HRTE_ADMIN_TOKEN: ${HRTE_ADMIN_TOKEN:-}
+    volumes:
+      - api-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:80"
+    environment:
+      API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Opt-in: `docker compose --profile postgres up`
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: hrte
+      POSTGRES_USER: hrte
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hrte_dev_only}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hrte"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Opt-in: `docker compose --profile redis up`
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  api-data:
+  postgres-data:
