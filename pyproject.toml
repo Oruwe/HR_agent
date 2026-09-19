@@ -55,7 +55,17 @@ markers = [
   "integration: requires a real GOOGLE_API_KEY and reaches the network",
 ]
 # Quality gate: the suite must run clean. Any warning is an error.
-filterwarnings = ["error"]
+filterwarnings = [
+  "error",
+  # starlette's TestClient reads the deprecated `anyio.abc.BlockingPortal`
+  # alias at import time (starlette/testclient.py), which anyio 4.15 started
+  # warning about. Not our code and not fixable from here. The alternative --
+  # pinning anyio below 4.15 -- would constrain the production runtime to
+  # silence a warning only a test import can trigger, so this ignore is
+  # deliberately narrow: it names the one alias, and goes inert on its own
+  # once starlette stops using it.
+  "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
