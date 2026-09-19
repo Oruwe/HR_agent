@@ -41,7 +41,12 @@ from app.agent.cognition import (
     ToolCall,
     build_cognition,
 )
-from app.agent.conversation_prompts import build_fast_system_prompt, build_system_prompt, closing, greeting
+from app.agent.conversation_prompts import (
+    build_fast_system_prompt,
+    build_system_prompt,
+    closing,
+    greeting,
+)
 from app.agent.interview_flow import InterviewFlow
 from app.config import Settings, Stage, get_settings
 from app.schemas.candidate import (
