@@ -37,7 +37,7 @@ from app.api.schemas import (
     StatusResponse,
 )
 from app.config import Settings, get_settings
-from app.db.engine import get_db
+from app.db.engine import get_db, storage_backend, storage_is_ephemeral
 from app.db.models import Candidate
 from app.demo_pool import DEMO_BASELINE, DEMO_CANDIDATES
 from app.ingest import build_candidate
@@ -279,6 +279,8 @@ def system_status(
         fallbacks=fallbacks,
         candidates=total,
         analyzed=analyzed,
+        storage_backend=storage_backend(),
+        storage_ephemeral=storage_is_ephemeral(),
         moss_configured=settings.moss_configured,
         retrieval_backend=get_index().backend,
         retrieval_degraded=settings.moss_configured and retrieval_fallbacks > 0,

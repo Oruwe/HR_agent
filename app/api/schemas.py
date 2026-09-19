@@ -96,6 +96,12 @@ class StatusResponse(BaseModel):
     candidates: int = 0
     analyzed: int = 0
 
+    # -- storage --------------------------------------------------------------
+    storage_backend: str = "sqlite"
+    #: True when an imported pool will not survive a restart. See
+    #: app.db.engine.storage_is_ephemeral -- the loss is otherwise silent.
+    storage_ephemeral: bool = False
+
     # -- retrieval ------------------------------------------------------------
     #: "Moss credentials are set" -- NOT "Moss works". See retrieval_degraded.
     moss_configured: bool = False

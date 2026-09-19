@@ -267,6 +267,14 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {status?.storage_ephemeral && (
+        <div className="warn-banner">
+          <b>This pool will not survive a restart.</b> The server is storing candidates in
+          SQLite on its own container filesystem, which the platform discards on every
+          deploy, restart and idle spin-down. Set <code>DATABASE_URL</code> to a Postgres
+          instance to keep imported candidates.
+        </div>
+      )}
       {error && <div className="error-banner">{error}</div>}
       {busy && <div className="busy-banner">{busy}</div>}
 
@@ -374,6 +382,11 @@ export default function DashboardPage() {
                 <dt>Retrieval</dt>
                 <dd className={status.retrieval_degraded ? "alert-text" : ""}>
                   {status.retrieval_backend}
+                </dd>
+                <dt>Storage</dt>
+                <dd className={status.storage_ephemeral ? "alert-text" : ""}>
+                  {status.storage_backend}
+                  {status.storage_ephemeral ? " (ephemeral)" : ""}
                 </dd>
               </dl>
               {status.degraded && (

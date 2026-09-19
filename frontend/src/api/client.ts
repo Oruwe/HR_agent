@@ -112,6 +112,9 @@ export interface StatusResponse {
   fallbacks: number;
   candidates: number;
   analyzed: number;
+  storage_backend: string;
+  /** True when an imported pool will not survive a restart. */
+  storage_ephemeral: boolean;
   /** "Moss credentials are set" -- not "Moss works". See retrieval_degraded. */
   moss_configured: boolean;
   retrieval_backend: string;

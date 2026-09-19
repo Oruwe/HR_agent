@@ -34,6 +34,29 @@ engine = create_engine(DATABASE_URL, connect_args=_connect_args, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
+def storage_backend() -> str:
+    """What the pool is actually stored in. Safe to show: no credentials."""
+    return "sqlite" if DATABASE_URL.startswith("sqlite") else DATABASE_URL.split("://", 1)[0]
+
+
+def storage_is_ephemeral() -> bool:
+    """True when an imported pool will not survive a restart.
+
+    SQLite here means a file on the container's own filesystem. On a
+    container platform that filesystem is thrown away on every deploy,
+    restart, and idle spin-down -- so the manager imports 200 candidates,
+    the service sleeps, and the pool is gone with no error anywhere.
+
+    Locally that is exactly what you want and this is not worth mentioning.
+    In production it is data loss waiting to happen, which is why
+    ``/api/status`` reports it and the dashboard says so out loud: the
+    failure is silent, so the warning has to be visible.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return False
+    return os.environ.get("HRTE_ENV", "development").strip().lower() == "production"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -59,4 +82,13 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
-__all__ = ["DATABASE_URL", "Base", "SessionLocal", "engine", "get_db", "init_db"]
+__all__ = [
+    "DATABASE_URL",
+    "Base",
+    "SessionLocal",
+    "engine",
+    "get_db",
+    "init_db",
+    "storage_backend",
+    "storage_is_ephemeral",
+]
