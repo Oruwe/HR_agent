@@ -158,10 +158,10 @@ async def _run_turn(
             collected.append(chunk)
             yield chunk
 
-    synthesizer = build_synthesizer(settings)
-    # Draining the synthesizer stream is what drives `_tee` (and therefore the
-    # cognition stream) to completion and finalizes turn.perceived_ms.
-    async for _frame in synthesizer.stream(sentence_chunks(_tee())):
+    # Drain cognition directly. The HTTP endpoint may still render a single
+    # compatibility WAV below, but synthesising here as well would do all TTS
+    # work twice for every turn.
+    async for _chunk in _tee():
         pass
 
     text = "".join(collected).strip()
