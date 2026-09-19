@@ -174,7 +174,10 @@ class ScreeningOrchestrator:
         with no prior audio to hide latency behind, so generating it would make
         the interview's first impression its slowest response.
         """
-        self.store.ensure_collection()
+        # Moss is the live rubric source. The archive index is only initialised
+        # when Moss is not configured; it must never delay a live interview.
+        if not self.settings.moss_configured:
+            self.store.ensure_collection()
         await self.retriever.warm()
         self.tracer.start_session(self.session.role.value, self.session.candidate.sanitized_name)
         text = greeting(self.session.role)
