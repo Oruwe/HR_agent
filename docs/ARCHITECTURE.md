@@ -1,6 +1,6 @@
 # Architecture
 
-`hr-talent-evaluator` â€” sub-160ms voice screening agent, Moss on the retrieval hot path.
+`hr-talent-evaluator` â€” sub-150ms voice screening agent, Moss on the retrieval hot path.
 
 ---
 
@@ -39,11 +39,11 @@ flowchart TB
     end
 
     MIC -->|"20ms"| SFU --> RING --> VAD
-    VAD -->|"SPECULATE @120ms"| ORCH
-    VAD -->|"TURN_COMMIT @250ms"| ORCH
+    VAD -->|"SPECULATE @40ms"| ORCH
+    VAD -->|"TURN_COMMIT @120ms"| ORCH
     VAD -->|"BARGE_IN @30ms"| RING
 
-    ORCH -->|"&lt;10ms"| MOSS
+    ORCH -->|"&lt;5ms"| MOSS
     MOSS -.->|"any failure"| FALLBACK
     ORCH --> FLOW
     ORCH --> COG
@@ -63,7 +63,7 @@ flowchart TB
     class SCRUB sec
 ```
 
-**Green** is the conversational hot path, governed by the 160ms budget.
+**Green** is the conversational hot path, governed by the 150ms budget.
 **Blue** is everything that must never block a turn.
 **Red** is the security boundary every outbound payload crosses.
 
@@ -249,18 +249,18 @@ scrubbing.
 
 ```mermaid
 pie showData
-    title 160ms turnaround budget (ms)
+    title 150ms turnaround budget (ms)
     "cognition TTFT" : 45
     "speech synthesis" : 35
-    "VAD endpoint" : 25
-    "transport ingress" : 20
-    "audio ingestion" : 15
-    "vector match (Moss)" : 10
-    "transport egress" : 10
+    "VAD endpoint" : 20
+    "transport egress" : 20
+    "transport ingress" : 15
+    "audio ingestion" : 10
+    "vector match (Moss)" : 5
 ```
 
 `assert_budget_is_coherent()` runs at import and refuses to start the process if
-these stop summing to 160 â€” the budget table is the one place an engineer is
+these stop summing to 150 â€” the budget table is the one place an engineer is
 tempted to "just add 5ms" under deadline.
 
 ---
@@ -287,5 +287,5 @@ flowchart TB
 
 Moss ships **inside the worker pod**. There is no retrieval tier to scale, no
 network hop to budget for, and no vector database to operate â€” which is the
-entire reason the 10ms line item is real. Workers are stateless between
+entire reason the 5ms line item is real. Workers are stateless between
 sessions and scale horizontally per concurrent interview.

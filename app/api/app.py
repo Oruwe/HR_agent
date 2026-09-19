@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="HR Talent Evaluator API",
-        description="API Gateway for the sub-160ms voice screening agent.",
+        description="API Gateway for the sub-150ms voice screening agent.",
         version="1.0.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",

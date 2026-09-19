@@ -11,15 +11,15 @@ you will cut people off mid-sentence, which is worse.
 This module resolves that with *speculative turn-taking*. Two thresholds, not
 one:
 
-* at ``speculative_silence_ms`` (default 120ms) we start generating a response,
+* at ``speculative_silence_ms`` (default 40ms) we start generating a response,
   while still listening;
-* at ``endpoint_silence_ms`` (default 250ms) we commit and start speaking.
+* at ``endpoint_silence_ms`` (default 120ms) we commit and start speaking.
 
 If the candidate resumes during the gap, the speculative turn is abandoned and
 costs nothing but some compute. If they do not, retrieval and time-to-first-
-token have already been paid for by the time we commit -- so the 130ms of
+token have already been paid for by the time we commit -- so the 80ms of
 speculation window is subtracted from the user-perceived turnaround. That is
-what makes the 160ms budget reachable at all; without it the budget would have
+what makes the 150ms budget reachable at all; without it the budget would have
 to fit *inside* the endpoint silence, which is not physically possible with a
 network round trip involved.
 

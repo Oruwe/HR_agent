@@ -1,0 +1,94 @@
+# Render Blueprint -- one command deploy: `render blueprint launch` (or the
+# "New +" -> "Blueprint" flow in the Render dashboard), pointed at this repo.
+#
+# Both services build from the existing Dockerfiles, so there is nothing
+# Render-specific baked into the app: `docker compose up --build` and this
+# blueprint deploy the identical images. Every credential below is left
+# blank on purpose -- the app already runs fully offline with defaults from
+# app/config.py, and only degrades to a mock provider when a key is unset.
+# Fill in real values in the Render dashboard (or `render env set`) to move
+# a given capability from offline-mock to production.
+#
+# Colocation matters for the 150ms turnaround budget documented in
+# docs/ARCHITECTURE.md: the budget assumes Moss, the LLM, and the TTS
+# provider are reachable from the api service's region without a WAN hop.
+# Pick `region` below to match wherever your LiveKit SFU, Moss project, and
+# Gemini/TTS endpoints actually live -- the budget is a property of the
+# deployment topology, not just the code.
+
+databases:
+  - name: hr-talent-evaluator-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: hr-talent-evaluator-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    dockerContext: .
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: HRTE_ENV
+        value: production
+      - key: HRTE_PII_MODE
+        value: strict
+      - key: HRTE_CORS_ORIGINS
+        sync: false
+      - key: HRTE_ADMIN_TOKEN
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hr-talent-evaluator-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: HRTE_COGNITION_MODEL
+        value: gemini-2.0-flash
+      - key: MOSS_PROJECT_ID
+        sync: false
+      - key: MOSS_PROJECT_KEY
+        sync: false
+      - key: HRTE_MOSS_INDEX
+        value: engineering_talent_rubrics
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: HRTE_SPEECH_ENGINE
+        value: moss
+      - key: HRTE_SPEECH_WS_URL
+        sync: false
+      - key: HRTE_SPEECH_API_KEY
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+
+  - type: web
+    name: hr-talent-evaluator-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: starter
+    region: oregon
+    envVars:
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: hr-talent-evaluator-api
+          property: hostport

@@ -21,7 +21,7 @@ class HnswConfig:
     """HNSW graph parameters.
 
     ``on_disk=False`` is not a default we drifted into -- it is the reason the
-    10ms retrieval budget is achievable. An on-disk graph turns every hop into
+    5ms retrieval budget is achievable. An on-disk graph turns every hop into
     a potential page fault, and HNSW does ``ef`` hops per query. For a rubric
     collection measured in thousands of points the entire graph is a few MB of
     RAM, so there is nothing to trade.

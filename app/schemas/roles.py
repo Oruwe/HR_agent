@@ -937,7 +937,7 @@ def normalise(text: str) -> str:
 
     Padded with single spaces so that word-boundary checks can be done with
     plain substring containment, which is markedly faster than a regex scan and
-    matters when this runs inside the 10ms retrieval budget.
+    matters when this runs inside the 5ms retrieval budget.
     """
     lowered = text.casefold()
     lowered = _NORMALISE_RE.sub(" ", lowered)

@@ -1,6 +1,6 @@
 # hr-talent-evaluator
 
-**A voice-interactive HR technical screening agent with a 160ms conversational turnaround budget, built on [Moss](https://www.moss.dev) for sub-10ms rubric retrieval.**
+**A voice-interactive HR technical screening agent with a 150ms conversational turnaround budget, built on [Moss](https://www.moss.dev) for sub-5ms rubric retrieval.**
 
 Built for **YC Fall 2026 Ã— Moss: The Zero Latency Builder Sprint** â€” Track 1, Real-Time Voice and Conversational AI.
 
@@ -58,7 +58,7 @@ A production-shaped screening agent that:
   real barge-in;
 - **routes candidates across nine engineering rubrics** deterministically, so
   the assignment is reproducible and defensible rather than a model's opinion;
-- **retrieves rubric context through Moss in under 10ms**, in-process, on the
+- **retrieves rubric context through Moss in under 5ms**, in-process, on the
   conversational hot path;
 - **redacts PII deterministically** before anything reaches a model, a vector
   store, a trace, or a disk â€” verified by 82 tests;
@@ -73,11 +73,11 @@ Reproducible on a laptop with no services running.
 
 | Metric | p50 | p95 | p99 | max | Budget |
 |---|---:|---:|---:|---:|---:|
-| **Rubric retrieval** | 0.59 ms | 0.70 ms | 0.81 ms | 0.84 ms | 10 ms |
-| **Turnaround** (commit â†’ first audio byte) | **12.5 ms** | **12.6 ms** | 12.7 ms | 12.8 ms | 160 ms |
-| Turnaround, sequential baseline | 43.1 ms | 43.5 ms | 43.8 ms | 44.0 ms | 160 ms |
+| **Rubric retrieval** | 1.11 ms | 1.29 ms | 1.42 ms | 1.44 ms | 5 ms |
+| **Turnaround** (commit â†’ first audio byte) | **12.44 ms** | **12.58 ms** | 12.79 ms | 12.91 ms | 150 ms |
+| Turnaround, sequential baseline | 43.30 ms | 43.57 ms | 43.67 ms | 43.72 ms | 150 ms |
 
-**Speculative turn-taking removes a median of 30.6ms per turn â€” 71% of the
+**Speculative turn-taking removes a median of 30.9ms per turn â€” 71% of the
 sequential cost.**
 
 ### What these numbers do and do not include
@@ -105,22 +105,22 @@ is on the hot path and a hosted vector database is not.
 
 ## Why Moss
 
-The budget allocates **10ms** to "fetch the context the interviewer needs."
+The budget allocates **5ms** to "fetch the context the interviewer needs."
 That line item is what makes the whole budget either real or fictional.
 
 A hosted vector database cannot participate in it honestly. A round trip to a
-managed service costs 15â€“40ms *before the index does any work*, so the 10ms
-line silently becomes 50ms and the 160ms total is arithmetic that does not
+managed service costs 15â€“40ms *before the index does any work*, so the 5ms
+line silently becomes 50ms and the 150ms total is arithmetic that does not
 survive contact with production.
 
 Moss is a **search runtime, not a database**. It runs in-process â€” browser,
 edge, device, or cloud â€” so a query is a function call rather than a network
-hop. That is a different category of thing, and it is the only reason a 10ms
+hop. That is a different category of thing, and it is the only reason a 5ms
 retrieval budget is a design constraint rather than a wish.
 
 Concretely, retrieval here answers one question on every turn: *which rubric
 competency is the candidate demonstrating right now?* The answer steers the
-next question. Get it in under 10ms and the interviewer stays on-rubric with no
+next question. Get it in under 5ms and the interviewer stays on-rubric with no
 perceptible cost; get it in 50ms and you either blow the budget or stop doing it
 and ask worse questions.
 
@@ -145,23 +145,23 @@ actually matters: Moss failing *mid-call*.
 
 ---
 
-## How the 160ms budget is met
+## How the 150ms budget is met
 
 ### The budget
 
 | Stage | Budget | Mechanism |
 |---|---:|---|
-| Transport ingress | 20 ms | LiveKit WebRTC peer connection |
-| VAD endpoint | 25 ms | Silero VAD v5 (ONNX, CPU) with an adaptive-energy fallback |
-| Audio ingestion | 15 ms | Dual-track 20ms ring buffer |
-| **Vector match** | **10 ms** | **Moss, in-process** |
+| Transport ingress | 15 ms | LiveKit WebRTC peer connection |
+| VAD endpoint | 20 ms | Silero VAD v5 (ONNX, CPU) with an adaptive-energy fallback |
+| Audio ingestion | 10 ms | Dual-track 20ms ring buffer |
+| **Vector match** | **5 ms** | **Moss, in-process** |
 | Cognition TTFT | 45 ms | Streaming generation |
 | Speech synthesis | 35 ms | Streaming speech-to-speech, first frame |
-| Transport egress | 10 ms | Paced publish, bounded jitter buffer |
-| **Total** | **160 ms** | commit â†’ first audio byte |
+| Transport egress | 20 ms | Paced publish, bounded jitter buffer |
+| **Total** | **150 ms** | commit â†’ first audio byte |
 
 The table is enforced, not decorative: `assert_budget_is_coherent()` runs at
-import and refuses to start if the stages stop summing to 160.
+import and refuses to start if the stages stop summing to 150.
 
 ### The mechanism: speculative turn-taking
 
@@ -175,16 +175,16 @@ So the VAD uses **two** thresholds:
 ```
 candidate stops speaking
    â”‚
-   â”œâ”€ 120ms â”€â†’ SPECULATE       retrieval + generation start; still listening
+   â”œâ”€ 40ms  â”€â†’ SPECULATE       retrieval + generation start; still listening
    â”‚
-   â”œâ”€ 250ms â”€â†’ TURN_COMMIT     tokens already buffered â†’ speak immediately
+   â”œâ”€ 120ms â”€â†’ TURN_COMMIT     tokens already buffered â†’ speak immediately
    â”‚
    â””â”€ if speech resumes in between â†’ draft discarded, costs nothing but compute
 ```
 
-The 130ms gap is paid for by silence the candidate is producing anyway. If they
+The 80ms gap is paid for by silence the candidate is producing anyway. If they
 resume talking, the draft is thrown away for free. This is why the measured
-turnaround is 12.5ms rather than 43ms â€” and `test_speculation_is_what_buys_the_budget`
+turnaround is 12.44ms rather than 43ms â€” and `test_speculation_is_what_buys_the_budget`
 asserts that difference directly, so the mechanism cannot silently stop working
 while every other latency test still passes.
 
