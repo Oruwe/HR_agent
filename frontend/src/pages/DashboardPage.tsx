@@ -41,7 +41,11 @@ export default function DashboardPage() {
       </Button>
       
       {voiceError && (
-        <div className="error-message">
+        <div className="error-message" style={{
+          color: 'red',
+          marginTop: '8px',
+          fontSize: '14px'
+        }}>
           {voiceError}
         </div>
       )}

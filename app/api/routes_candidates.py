@@ -18,9 +18,13 @@ async def get_elevenlabs_token():
     try:
         client = ElevenLabs(api_key=settings.elevenlabs_api_key)
         response = client.convai.get_signed_url(
-            agent_id=settings.elevenlabs_agent_id
+            agent_id=settings.elevenlabs_agent_id,
+            expires_in=3600  # 1 hour expiry
         )
-        return {"signed_url": response.url}
+        return {
+            "signed_url": response.url,
+            "expires_at": int(time.time()) + 3600
+        }
     except Exception as e:
         raise HTTPException(
             status_code=500,
