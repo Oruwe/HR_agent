@@ -32,9 +32,7 @@ def _upgrade(db_path: Path) -> subprocess.CompletedProcess[str]:
 def _version(db_path: Path) -> str | None:
     con = sqlite3.connect(db_path)
     try:
-        row = con.execute(
-            "SELECT version_num FROM alembic_version"
-        ).fetchone()
+        row = con.execute("SELECT version_num FROM alembic_version").fetchone()
         return row[0] if row else None
     finally:
         con.close()
@@ -43,12 +41,7 @@ def _version(db_path: Path) -> str | None:
 def _tables(db_path: Path) -> set[str]:
     con = sqlite3.connect(db_path)
     try:
-        return {
-            r[0]
-            for r in con.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
+        return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     finally:
         con.close()
 
@@ -59,21 +52,13 @@ def legacy_db(tmp_path: Path) -> Path:
     db = tmp_path / "legacy.db"
 
     con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE alembic_version "
-        "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
-    )
+    con.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
     con.execute(
         "INSERT INTO alembic_version VALUES (?)",
         (LEGACY_REVISION,),
     )
-    con.execute(
-        "CREATE TABLE sessions (id TEXT PRIMARY KEY, note TEXT)"
-    )
-    con.execute(
-        "INSERT INTO sessions VALUES "
-        "('s1', 'a real interview record')"
-    )
+    con.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, note TEXT)")
+    con.execute("INSERT INTO sessions VALUES ('s1', 'a real interview record')")
     con.commit()
     con.close()
 
@@ -97,10 +82,7 @@ def test_upgrading_a_legacy_database_destroys_nothing(
 
     con = sqlite3.connect(legacy_db)
     try:
-        assert (
-            con.execute("SELECT note FROM sessions").fetchone()[0]
-            == "a real interview record"
-        )
+        assert con.execute("SELECT note FROM sessions").fetchone()[0] == "a real interview record"
     finally:
         con.close()
 
