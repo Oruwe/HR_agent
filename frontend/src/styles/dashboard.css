@@ -175,9 +175,24 @@ h2 {
 }
 
 .error-banner,
-.busy-banner {
+.busy-banner,
+.warn-banner {
   padding: 9px 20px;
   font-size: 13px;
+}
+
+/* Data loss is silent, so the warning is not. */
+.warn-banner {
+  background: var(--amber-100);
+  color: #92400e;
+  border-bottom: 1px solid #fcd34d;
+}
+
+.warn-banner code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
 }
 
 .error-banner {

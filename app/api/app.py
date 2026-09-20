@@ -20,7 +20,7 @@ from app.api.routes_candidates import router as candidates_router
 from app.api.routes_health import HTTP_REQUEST_DURATION_SECONDS, HTTP_REQUESTS_TOTAL
 from app.api.routes_health import router as health_router
 from app.config import get_settings
-from app.db.engine import init_db
+from app.db.engine import init_db, storage_backend, storage_is_ephemeral
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +33,20 @@ async def _lifespan(app: FastAPI):
     init_db()
     settings = get_settings()
     logger.info(
-        "Hiring analyst API starting. offline=%s model=%s",
+        "Hiring analyst API starting. offline=%s model=%s storage=%s",
         settings.offline,
         settings.model,
+        storage_backend(),
     )
+    if storage_is_ephemeral():
+        # Loud, because the failure it warns about is completely silent: the
+        # pool simply is not there after the next restart, with no error.
+        logger.warning(
+            "This is a PRODUCTION deployment storing the candidate pool in SQLite "
+            "on the container filesystem. That filesystem is discarded on every "
+            "deploy, restart and idle spin-down, so every imported candidate will "
+            "be lost without warning. Set DATABASE_URL to a Postgres instance."
+        )
     yield
 
 

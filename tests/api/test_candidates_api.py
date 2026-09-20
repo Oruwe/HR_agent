@@ -323,3 +323,26 @@ def test_status_reports_moss_when_configured(
     body = api_client.get("/api/status").json()
     assert body["moss_configured"] is True
     assert "moss" in body["retrieval_backend"]
+
+
+# ---- Storage ----------------------------------------------------------------
+
+
+def test_status_reports_the_storage_backend(api_client: TestClient) -> None:
+    body = api_client.get("/api/status").json()
+    assert body["storage_backend"] == "sqlite"
+
+
+def test_local_sqlite_is_not_flagged_as_ephemeral(api_client: TestClient) -> None:
+    """Locally, a SQLite file is the point. Warning about it every run would
+    train people to ignore the warning that matters."""
+    assert api_client.get("/api/status").json()["storage_ephemeral"] is False
+
+
+def test_production_sqlite_is_flagged_as_ephemeral(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A production deployment on container-local SQLite loses the whole pool
+    on the next restart, silently. The dashboard has to be able to say so."""
+    monkeypatch.setenv("HRTE_ENV", "production")
+    assert api_client.get("/api/status").json()["storage_ephemeral"] is True
