@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,9 +16,13 @@
   },
   "dependencies": {
     "react": "^19.2.8",
+<<<<<<< HEAD
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
     "@elevenlabs/react": "^1.0.0"
+=======
+    "react-dom": "^19.2.8"
+>>>>>>> a12cd5831229344cfe567d2f98949cf2442622d7
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

@@ -1,16 +1,9 @@
-"""Runtime configuration and the latency budget that governs the whole pipeline.
+"""Runtime configuration, read once from the environment and frozen.
 
-Design notes
-------------
-Configuration is read from the process environment exactly once, at import of
-:func:`get_settings`, and is then frozen. Nothing in the hot path may touch
-``os.environ`` -- an environment lookup inside a 20ms audio frame callback is a
-syscall-shaped foot-gun, and the budget below leaves no room for it.
-
-Every field has a default that works with zero infrastructure. With no
-credentials present the agent runs in OFFLINE mode: deterministic local
-embeddings, an in-process vector index, mock cognition and mock synthesis. That
-is what CI exercises, and it is why the test suite needs no network.
+Every field has a default that works with no infrastructure: with no
+credentials the app runs OFFLINE, backed by a deterministic mock analyst
+instead of a live model, which is what the test suite exercises and why it
+needs no network.
 """
 
 from __future__ import annotations
@@ -18,98 +11,19 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 from functools import lru_cache
-from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-# =============================================================================
-# Latency budget
-# =============================================================================
-
-#: Hard ceiling, in milliseconds, for a conversational turn measured as
-#: "candidate stops speaking" -> "first byte of agent audio handed to the
-#: egress transport". Exceeding this is a defect, not a slow day.
-TOTAL_TURNAROUND_BUDGET_MS: Final[float] = 150.0
-
-
-class Stage(StrEnum):
-    """The seven stages a turn passes through, in execution order.
-
-    The names are also the span names emitted to Langfuse/OTel, so renaming one
-    is a dashboard-breaking change.
-    """
-
-    TRANSPORT_INGRESS = "transport_ingress"
-    VAD_ENDPOINT = "vad_endpoint"
-    AUDIO_INGESTION = "audio_ingestion"
-    VECTOR_MATCH = "vector_match"
-    COGNITION_TTFT = "cognition_ttft"
-    SPEECH_SYNTHESIS = "speech_synthesis"
-    TRANSPORT_EGRESS = "transport_egress"
-
-
-#: Per-stage ceilings. These sum to exactly TOTAL_TURNAROUND_BUDGET_MS, so a
-#: stage that overruns has provably stolen headroom from a downstream stage.
-STAGE_BUDGETS_MS: Final[dict[Stage, float]] = {
-    Stage.TRANSPORT_INGRESS: 15.0,  # LiveKit WebRTC PeerConnection, edge -> SFU -> worker
-    Stage.VAD_ENDPOINT: 20.0,  # Silero VAD v5 endpoint decision (ONNX, CPU)
-    Stage.AUDIO_INGESTION: 10.0,  # dual-track 20ms ring buffer assembly
-    Stage.VECTOR_MATCH: 5.0,  # in-memory rubric lookup
-    Stage.COGNITION_TTFT: 45.0,  # streaming LLM time-to-first-token
-    Stage.SPEECH_SYNTHESIS: 35.0,  # speech-to-speech first audio frame
-    Stage.TRANSPORT_EGRESS: 20.0,  # jitter buffer + WebRTC publish
-}
-
-#: Stages whose cost is paid *concurrently with the candidate still speaking*
-#: (prefetch/speculation), and therefore do not consume post-endpoint wall time.
-#: Kept explicit so the scheduler and the benchmark agree on what "free" means.
-PREFETCHABLE_STAGES: Final[frozenset[Stage]] = frozenset(
-    {Stage.AUDIO_INGESTION, Stage.VECTOR_MATCH}
-)
-
-#: Audio format on the wire. 48kHz mono PCM16 in 20ms frames == 960 samples.
-SAMPLE_RATE_HZ: Final[int] = 48_000
-FRAME_DURATION_MS: Final[int] = 20
-SAMPLES_PER_FRAME: Final[int] = SAMPLE_RATE_HZ * FRAME_DURATION_MS // 1000  # 960
-BYTES_PER_SAMPLE: Final[int] = 2
-CHANNELS: Final[int] = 1
-
-#: Dense embedding width. Matches Gemini text-embedding output truncation.
-EMBEDDING_DIM: Final[int] = 768
-
-
-def assert_budget_is_coherent() -> None:
-    """Fail loudly at import time if the stage budgets stop summing to the total.
-
-    This is a real guard, not a formality: the budget table is the single place
-    where an engineer is tempted to 'just add 5ms' during a deadline.
-    """
-    total = sum(STAGE_BUDGETS_MS.values())
-    if abs(total - TOTAL_TURNAROUND_BUDGET_MS) > 1e-9:
-        raise ValueError(
-            f"Stage budgets sum to {total}ms but the total turnaround budget is "
-            f"{TOTAL_TURNAROUND_BUDGET_MS}ms. Rebalance STAGE_BUDGETS_MS rather "
-            f"than widening the contract."
-        )
-
-
-assert_budget_is_coherent()
-
-
-# =============================================================================
-# Settings
-# =============================================================================
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PiiMode(StrEnum):
+    """How hard the egress guard fails when it finds unredacted PII.
+
+    ``strict`` raises. ``permissive`` scrubs in place and continues, which is
+    appropriate for a staging rollout and never for production.
+    """
+
     STRICT = "strict"
     PERMISSIVE = "permissive"
-
-
-class SpeechEngine(StrEnum):
-    MOCK = "mock"
-    MOSS = "moss"
-    LIVEKIT = "livekit"
 
 
 def _env(key: str, default: str = "") -> str:
@@ -117,59 +31,59 @@ def _env(key: str, default: str = "") -> str:
 
 
 def _env_float(key: str, default: float) -> float:
-    raw = _env(key)
-    if not raw:
-        return default
     try:
-        return float(raw)
-    except ValueError:
+        return float(os.environ[key])
+    except (KeyError, ValueError):
         return default
 
 
 def _env_int(key: str, default: int) -> int:
-    return int(_env_float(key, float(default)))
+    try:
+        return int(os.environ[key])
+    except (KeyError, ValueError):
+        return default
 
 
 class Settings(BaseModel):
-    """Immutable, fully-defaulted runtime configuration."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True)
 
     environment: str = "development"
     log_level: str = "INFO"
 
-    # -- latency governance ---------------------------------------------------
-    latency_budget_ms: float = Field(default=TOTAL_TURNAROUND_BUDGET_MS, gt=0)
-    endpoint_silence_ms: float = Field(default=120.0, gt=0)
-    speculative_silence_ms: float = Field(default=40.0, gt=0)
-    barge_in_ms: float = Field(default=30.0, gt=0)
-
-    # -- transport ------------------------------------------------------------
-    livekit_url: str = ""
-    livekit_api_key: str = ""
-    livekit_api_secret: str = ""
-    room_prefix: str = "screening"
-
-    # -- cognition ------------------------------------------------------------
+    # -- the analyst model ----------------------------------------------------
     google_api_key: str = ""
-    cognition_model: str = "gemini-2.0-flash"
-    cognition_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    cognition_max_tokens: int = Field(default=48, gt=0)
-    fast_path: bool = True
+    #: A floating alias, not a pinned version, and deliberately so: this app
+    #: previously defaulted to "gemini-2.0-flash" until that model was retired
+    #: out from under the deployment, at which point every call 400'd and the
+    #: product silently served canned answers. "gemini-2.5-flash" is already
+    #: gone the same way. Pin via HRTE_MODEL if you need frozen phrasing.
+    model: str = "gemini-flash-latest"
+    temperature: float = Field(default=0.4, ge=0.0, le=2.0)
+    #: Generous, because a hiring rationale over a whole pool is a real answer,
+    #: not a one-line interview question.
+    max_output_tokens: int = Field(default=2048, gt=0)
+    #: Thinking tokens are billed out of max_output_tokens, so a reasoning
+    #: model can burn the entire allowance before emitting a visible
+    #: character -- an empty answer. 0 disables it; None omits the field for a
+    #: model that rejects it.
+    thinking_budget: int | None = Field(default=0, ge=0)
 
-    # -- synthesis ------------------------------------------------------------
-    # NOTE: these configure MOSS-Speech, the open speech-to-speech model. It is
-    # unrelated to Moss (YC F25), the retrieval runtime configured below. The
-    # two share a name and nothing else.
-    speech_engine: SpeechEngine = SpeechEngine.MOCK
-    speech_ws_url: str = ""
-    speech_api_key: str = ""
-
-    # -- retrieval: Moss (hot path) ------------------------------------------
+    # -- retrieval (Moss) -----------------------------------------------------
+    #: Moss is a semantic search runtime (https://usemoss.dev). It backs the
+    #: analyst's retrieval: a manager's question is matched against the pool
+    #: and only the relevant records are put in front of the model, instead of
+    #: every record in the database.
+    #:
+    #: Both values are needed. With either missing the local index is used,
+    #: which is lexical rather than semantic -- a real fallback, but a weaker
+    #: one, and /api/status says which is in play.
     moss_project_id: str = ""
     moss_project_key: str = ""
-    moss_index: str = "engineering_talent_rubrics"
+    moss_index: str = "candidate_pool"
+    #: How many candidate records a retrieved answer is allowed to read.
+    retrieval_top_k: int = Field(default=12, gt=0)
 
+<<<<<<< HEAD
     # -- retrieval: Qdrant (cold archive) ------------------------------------
     qdrant_url: str = ""
     qdrant_api_key: str = ""
@@ -192,50 +106,26 @@ class Settings(BaseModel):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
     otel_endpoint: str = ""
+=======
+    # -- storage / transport --------------------------------------------------
+    database_url: str = ""
+    cors_origins: str = "*"
+>>>>>>> a12cd5831229344cfe567d2f98949cf2442622d7
 
     # -- security -------------------------------------------------------------
     pii_mode: PiiMode = PiiMode.STRICT
 
-    # -- API / persistence layer -----------------------------------------------
-    database_url: str = ""
-    redis_url: str = ""
-    cors_origins: str = "*"
-    session_ttl_seconds: int = Field(default=3600, gt=0)
-
-    @field_validator("speculative_silence_ms")
-    @classmethod
-    def _speculation_precedes_commit(cls, v: float, info) -> float:
-        commit = info.data.get("endpoint_silence_ms", 250.0)
-        if v >= commit:
-            raise ValueError(
-                "speculative_silence_ms must be strictly less than "
-                "endpoint_silence_ms, otherwise speculation buys no latency."
-            )
-        return v
-
-    # -- derived capability flags --------------------------------------------
-
     @property
-    def offline(self) -> bool:
-        """True when no external service is configured; CI's normal state."""
-        return not (
-            self.google_api_key or self.livekit_url or self.qdrant_url or self.moss_configured
-        )
-
-    @property
-    def moss_configured(self) -> bool:
-        """True when a Moss project is available for hot-path retrieval."""
-        return bool(self.moss_project_id and self.moss_project_key)
-
-    @property
-    def cognition_configured(self) -> bool:
+    def model_configured(self) -> bool:
+        """True when a real model is available. False means the mock analyst."""
         return bool(self.google_api_key)
 
     @property
-    def transport_configured(self) -> bool:
-        return bool(self.livekit_url and self.livekit_api_key and self.livekit_api_secret)
+    def offline(self) -> bool:
+        return not self.model_configured
 
     @property
+<<<<<<< HEAD
     def qdrant_configured(self) -> bool:
         return bool(self.qdrant_url)
 
@@ -298,35 +188,37 @@ def load_settings() -> Settings:
         cors_origins=_env("HRTE_CORS_ORIGINS", "*"),
         session_ttl_seconds=_env_int("HRTE_SESSION_TTL_SECONDS", 3600),
     )
+=======
+    def moss_configured(self) -> bool:
+        """True when Moss *can* be reached. Not a claim that it works --
+        see the retrieval backend reported by /api/status for that."""
+        return bool(self.moss_project_id and self.moss_project_key)
+>>>>>>> a12cd5831229344cfe567d2f98949cf2442622d7
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Process-wide cached settings. Call :func:`reset_settings` in tests."""
-    return load_settings()
+    return Settings(
+        environment=_env("HRTE_ENV", "development"),
+        log_level=_env("HRTE_LOG_LEVEL", "INFO").upper(),
+        google_api_key=_env("GOOGLE_API_KEY"),
+        model=_env("HRTE_MODEL", "gemini-flash-latest"),
+        temperature=_env_float("HRTE_TEMPERATURE", 0.4),
+        max_output_tokens=_env_int("HRTE_MAX_OUTPUT_TOKENS", 2048),
+        thinking_budget=_env_int("HRTE_THINKING_BUDGET", 0),
+        moss_project_id=_env("MOSS_PROJECT_ID"),
+        moss_project_key=_env("MOSS_PROJECT_KEY"),
+        moss_index=_env("HRTE_MOSS_INDEX", "candidate_pool"),
+        retrieval_top_k=_env_int("HRTE_RETRIEVAL_TOP_K", 12),
+        database_url=_env("DATABASE_URL"),
+        cors_origins=_env("HRTE_CORS_ORIGINS", "*"),
+        pii_mode=PiiMode(_env("HRTE_PII_MODE", "strict") or "strict"),
+    )
 
 
 def reset_settings() -> None:
-    """Drop the cached settings so the next :func:`get_settings` re-reads env."""
+    """Drop the cached settings so the next call re-reads the environment."""
     get_settings.cache_clear()
 
 
-__all__ = [
-    "BYTES_PER_SAMPLE",
-    "CHANNELS",
-    "EMBEDDING_DIM",
-    "FRAME_DURATION_MS",
-    "PREFETCHABLE_STAGES",
-    "SAMPLES_PER_FRAME",
-    "SAMPLE_RATE_HZ",
-    "STAGE_BUDGETS_MS",
-    "TOTAL_TURNAROUND_BUDGET_MS",
-    "PiiMode",
-    "Settings",
-    "SpeechEngine",
-    "Stage",
-    "assert_budget_is_coherent",
-    "get_settings",
-    "load_settings",
-    "reset_settings",
-]
+__all__ = ["PiiMode", "Settings", "get_settings", "reset_settings"]

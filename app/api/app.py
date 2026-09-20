@@ -1,6 +1,7 @@
-"""FastAPI application factory. This is the "API Gateway" box in the
-architecture diagram, fronting the voice orchestrator and everything behind
-it for the Candidate App and Admin Dashboard.
+"""FastAPI application factory.
+
+One surface, one audience: a hiring manager reviewing scraped candidate
+records. There is no candidate-facing side to this service.
 """
 
 from __future__ import annotations
@@ -15,41 +16,46 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.routes_admin import router as admin_router
+from app.api.routes_candidates import router as candidates_router
 from app.api.routes_health import HTTP_REQUEST_DURATION_SECONDS, HTTP_REQUESTS_TOTAL
 from app.api.routes_health import router as health_router
-from app.api.routes_sessions import router as sessions_router
 from app.config import get_settings
-from app.db.engine import init_db
+from app.db.engine import init_db, storage_backend, storage_is_ephemeral
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Convenience for local/dev/demo (`make api`, `docker compose up`) so the
-    # app runs against a fresh SQLite file with zero setup. Real deployments
-    # should run `alembic upgrade head` explicitly as part of the release
-    # process instead of relying on this -- see docs/DEPLOYMENT.md.
+    # Convenience for local/dev/demo so the app runs against a fresh SQLite
+    # file with zero setup. Real deployments run `alembic upgrade head` as
+    # part of the release, as the Dockerfile's CMD does.
     init_db()
     settings = get_settings()
     logger.info(
-        "HR Talent Evaluator API starting. offline=%s cognition=%s moss=%s stt=%s telemetry=%s",
+        "Hiring analyst API starting. offline=%s model=%s storage=%s",
         settings.offline,
-        settings.cognition_configured,
-        settings.moss_configured,
-        settings.stt_configured,
-        settings.telemetry_configured,
+        settings.model,
+        storage_backend(),
     )
+    if storage_is_ephemeral():
+        # Loud, because the failure it warns about is completely silent: the
+        # pool simply is not there after the next restart, with no error.
+        logger.warning(
+            "This is a PRODUCTION deployment storing the candidate pool in SQLite "
+            "on the container filesystem. That filesystem is discarded on every "
+            "deploy, restart and idle spin-down, so every imported candidate will "
+            "be lost without warning. Set DATABASE_URL to a Postgres instance."
+        )
     yield
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="HR Talent Evaluator API",
-        description="API Gateway for the sub-160ms voice screening agent.",
-        version="1.0.0",
+        title="Hiring Analyst API",
+        description="Scraped candidate records in, hiring recommendations out.",
+        version="2.0.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         lifespan=_lifespan,
@@ -73,7 +79,7 @@ def create_app() -> FastAPI:
         start = time.perf_counter()
         response = await call_next(request)
         duration = time.perf_counter() - start
-        # Route template, not the raw path, so /api/sessions/<uuid>/... does not
+        # Route template, not the raw path, so /api/candidates/<uuid> does not
         # explode Prometheus's label cardinality.
         path_label = (
             request.scope.get("route").path if request.scope.get("route") else request.url.path
@@ -99,8 +105,7 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(health_router)
-    app.include_router(sessions_router)
-    app.include_router(admin_router)
+    app.include_router(candidates_router)
 
     return app
 

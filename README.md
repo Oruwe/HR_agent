@@ -1,398 +1,222 @@
 # hr-talent-evaluator
 
-**A voice-interactive HR technical screening agent with a 160ms conversational turnaround budget, built on [Moss](https://www.moss.dev) for sub-10ms rubric retrieval.**
+A hiring manager's dashboard. Scraped candidate records go in as JSON, an AI
+analyst ranks them and explains why, and the manager can ask questions about
+the pool in plain language.
 
-Built for **YC Fall 2026 Ã— Moss: The Zero Latency Builder Sprint** â€” Track 1, Real-Time Voice and Conversational AI.
+```
+  scraped JSON  ->  PII scrubbed  ->  stored  ->  ranked by the analyst  ->  dashboard
+                                         |                                       |
+                                         +--> indexed for search (Moss) <--+     |
+                                                                           |     |
+                                         manager asks a question  ---------+-----+
+                                            -> search the pool
+                                            -> answer from what was found
+```
 
-This repository is two things layered together:
+There is no candidate-facing side to this. Nobody is interviewed by it.
 
-1. **The voice orchestration core** (`app/agent`, `app/voice`, `app/storage`) â€”
-   the speculative turn-taking pipeline described below, runnable standalone
-   with zero infrastructure via `python -m app.main demo`.
-2. **A full application built on top of it** â€” an **API Gateway**
-   (`app/api`), a **Primary DB** (`app/db`), and two frontends, a
-   **Candidate App** and an **Admin Dashboard** (`frontend/`), so the pipeline
-   is reachable over HTTP from a browser, not just a terminal.
+---
+
+## Run it
 
 ```bash
-git clone https://github.com/Oruwe/HR_agent && cd HR_agent
-
-# 1. Offline voice pipeline demo (no services required)
 pip install -r requirements.txt
-python -m app.main demo        # full screening interview, no credentials required
-python -m app.main verify      # OpenGAP / budget / security compliance report
-python scripts/benchmark.py    # reproduce every latency number below
-pytest -q                      # 276 tests, zero warnings
-
-# 2. Full stack (API + Candidate App + Admin Dashboard), one command
-cp .env.example .env
-docker compose up --build      # API on :8000, frontend on :5173
+python -m app.main seed          # loads and ranks a 9-candidate demo pool
+make api                         # API on :8000
+make frontend                    # dashboard on :5173
 ```
 
-See [**Running the full stack**](#running-the-full-stack) below for the
-non-Docker path, and [**Final architecture-to-code audit**](#final-architecture-to-code-audit)
-for an honest, item-by-item account of what's implemented versus partial or
-blocked.
+That works with **no credentials at all**. Without a `GOOGLE_API_KEY` the
+dashboard reports "Offline analyst" and shows the demo pool's bundled
+baseline rankings rather than live judgement — a real working board to click
+through, honestly labelled as not being model output.
 
----
+To turn the analyst on, get a free key at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) and:
 
-## The problem
-
-A technical screening call is a conversation, and conversations have a metronome.
-Humans take the floor back in roughly 200ms. A voice agent that answers in 1.5
-seconds is not a slow assistant â€” it is a different kind of object, one that
-candidates talk over, interrupt, and stop trusting. For a screening interview
-that matters twice over: the latency *is* the product experience, and a
-candidate who is being evaluated is already nervous enough without a robot
-pausing meaningfully before every follow-up.
-
-The standard cascaded loop â€” wait for silence, transcribe, retrieve, generate,
-synthesise â€” spends 1500â€“4000ms per turn. This repository is an argument that
-most of that is architectural rather than physical.
-
-## What was actually built
-
-A production-shaped screening agent that:
-
-- conducts a **live, bidirectional voice interview** over LiveKit WebRTC, with
-  real barge-in;
-- **routes candidates across nine engineering rubrics** deterministically, so
-  the assignment is reproducible and defensible rather than a model's opinion;
-- **retrieves rubric context through Moss in under 10ms**, in-process, on the
-  conversational hot path;
-- **redacts PII deterministically** before anything reaches a model, a vector
-  store, a trace, or a disk â€” verified by 82 tests;
-- **measures its own latency budget** per stage and fails CI when it regresses.
-
----
-
-## Results
-
-Measured on the offline providers via `python scripts/benchmark.py --iterations 60`.
-Reproducible on a laptop with no services running.
-
-| Metric | p50 | p95 | p99 | max | Budget |
-|---|---:|---:|---:|---:|---:|
-| **Rubric retrieval** | 0.59 ms | 0.70 ms | 0.81 ms | 0.84 ms | 10 ms |
-| **Turnaround** (commit â†’ first audio byte) | **12.5 ms** | **12.6 ms** | 12.7 ms | 12.8 ms | 160 ms |
-| Turnaround, sequential baseline | 43.1 ms | 43.5 ms | 43.8 ms | 44.0 ms | 160 ms |
-
-**Speculative turn-taking removes a median of 30.6ms per turn â€” 71% of the
-sequential cost.**
-
-### What these numbers do and do not include
-
-Being precise about this matters more than the headline.
-
-- **Measured:** the orchestration this repository controls â€” endpointing,
-  speculation, retrieval, chunking, buffering, egress.
-- **Modelled:** component costs are simulated at realistic values (30ms
-  cognition time-to-first-token, 12ms to first synthesised audio frame). Using a
-  live model here would make the benchmark a measurement of somebody else's
-  network and would hide our own regressions in the variance.
-- **Not included:** real WAN round-trip time to a hosted LLM. From Bangalore to
-  a hosted inference endpoint that is realistically 200â€“400ms of TTFT.
-
-So the honest claim is not "this pipeline is faster than the speed of light."
-It is this: **the 130ms speculation window plus in-process retrieval absorb the
-costs that would otherwise land on the candidate's ear.** With a hosted model,
-turnaround equals whatever the provider's TTFT exceeds the speculation window,
-plus about 13ms of local pipeline. Every millisecond of retrieval you move
-off the network is a millisecond you get to keep â€” which is precisely why Moss
-is on the hot path and a hosted vector database is not.
-
----
-
-## Why Moss
-
-The budget allocates **10ms** to "fetch the context the interviewer needs."
-That line item is what makes the whole budget either real or fictional.
-
-A hosted vector database cannot participate in it honestly. A round trip to a
-managed service costs 15â€“40ms *before the index does any work*, so the 10ms
-line silently becomes 50ms and the 160ms total is arithmetic that does not
-survive contact with production.
-
-Moss is a **search runtime, not a database**. It runs in-process â€” browser,
-edge, device, or cloud â€” so a query is a function call rather than a network
-hop. That is a different category of thing, and it is the only reason a 10ms
-retrieval budget is a design constraint rather than a wish.
-
-Concretely, retrieval here answers one question on every turn: *which rubric
-competency is the candidate demonstrating right now?* The answer steers the
-next question. Get it in under 10ms and the interviewer stays on-rubric with no
-perceptible cost; get it in 50ms and you either blow the budget or stop doing it
-and ask worse questions.
-
-**Corpus design.** The nine rubrics are indexed as **36 documents â€” one per
-competency**, not nine per role. A whole-rubric document is four unrelated
-competencies concatenated; a candidate's answer matches one of them, and
-averaging against the other three buries the signal. Per-competency documents
-also let retrieval return *which* competency matched, which is the thing the
-interviewer actually needs.
-
-**Degradation.** Every Moss failure path falls back to an in-process index with
-an identical interface. A retrieval outage must degrade answer quality, never
-end a live interview. This is covered by tests, including the case that
-actually matters: Moss failing *mid-call*.
-
-> ### A naming caution
-> Two unrelated products called "Moss" appear in this system:
-> - **Moss (YC F25)** â€” the retrieval runtime. Configured via `MOSS_PROJECT_ID` / `MOSS_PROJECT_KEY`.
-> - **MOSS-Speech** â€” an open speech-to-speech model, used for synthesis. Configured via `HRTE_SPEECH_*`.
->
-> They share a name and nothing else. The original build spec conflated them; the code keeps them strictly apart.
-
----
-
-## How the 160ms budget is met
-
-### The budget
-
-| Stage | Budget | Mechanism |
-|---|---:|---|
-| Transport ingress | 20 ms | LiveKit WebRTC peer connection |
-| VAD endpoint | 25 ms | Silero VAD v5 (ONNX, CPU) with an adaptive-energy fallback |
-| Audio ingestion | 15 ms | Dual-track 20ms ring buffer |
-| **Vector match** | **10 ms** | **Moss, in-process** |
-| Cognition TTFT | 45 ms | Streaming generation |
-| Speech synthesis | 35 ms | Streaming speech-to-speech, first frame |
-| Transport egress | 10 ms | Paced publish, bounded jitter buffer |
-| **Total** | **160 ms** | commit â†’ first audio byte |
-
-The table is enforced, not decorative: `assert_budget_is_coherent()` runs at
-import and refuses to start if the stages stop summing to 160.
-
-### The mechanism: speculative turn-taking
-
-The largest lever on perceived latency is not the model â€” it is the endpoint
-decision. Wait 800ms for silence (a common default) and no amount of inference
-speed will make the agent feel present. Wait 150ms and you cut people off,
-which is worse.
-
-So the VAD uses **two** thresholds:
-
-```
-candidate stops speaking
-   â”‚
-   â”œâ”€ 120ms â”€â†’ SPECULATE       retrieval + generation start; still listening
-   â”‚
-   â”œâ”€ 250ms â”€â†’ TURN_COMMIT     tokens already buffered â†’ speak immediately
-   â”‚
-   â””â”€ if speech resumes in between â†’ draft discarded, costs nothing but compute
+```bash
+export GOOGLE_API_KEY=...
+python -m app.main seed          # now ranks with the model
 ```
 
-The 130ms gap is paid for by silence the candidate is producing anyway. If they
-resume talking, the draft is thrown away for free. This is why the measured
-turnaround is 12.5ms rather than 43ms â€” and `test_speculation_is_what_buys_the_budget`
-asserts that difference directly, so the mechanism cannot silently stop working
-while every other latency test still passes.
+## What the dashboard shows
 
-### Barge-in
+Three columns, left to right:
 
-When a candidate talks over the agent, queued audio must stop being *heard*, not
-merely stop being *generated*. Those differ by however much audio sits between
-the synthesiser and the wire.
+| Column | What it holds |
+| --- | --- |
+| **Left** | Pool size, the verdict breakdown, re-analyse and import actions, filters and search, and the live model status |
+| **Centre** | Every candidate ranked, with a score bar, a verdict, and the analyst's one-paragraph reason |
+| **Right** | The analyst. Ask anything about the pool; answers are grounded in the records it can see |
 
-The egress ring buffer is **epoch-tagged**: draining bumps a counter, and any
-frame carrying an older epoch is refused on arrival. A producer coroutine that
-decided to push before the interrupt completes that push afterwards and the
-frame is simply invalid â€” no lock, no cancellation point, no race.
+Clicking a candidate opens their scraped record exactly as it was stored —
+post-redaction, so what you see is what the model saw.
 
-Measured drain: **0.036ms**, dropping 400ms of queued audio, with zero frames
-published afterwards.
+## Importing real data
 
----
+The import route takes **any JSON shape**. The scraper owns the schema, not
+this app:
 
-## Architecture
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full diagrams, and
-[`docs/PRD.md`](docs/PRD.md) for the product requirements document.
-
-```
-app/
-â”œâ”€â”€ config.py            latency budget, settings, capability flags
-â”œâ”€â”€ schemas/             candidate Â· 9 role rubrics Â· evaluation dossier
-â”œâ”€â”€ security/            PII scrubber Â· credential guard
-â”œâ”€â”€ storage/
-â”‚   â”œâ”€â”€ retrieval.py     â† Moss runtime (hot path) + embedded fallback
-â”‚   â”œâ”€â”€ qdrant_client.py cold archive for completed dossiers
-â”‚   â””â”€â”€ embeddings.py    multi-probe hashed encoder + BM25 sparse
-â”œâ”€â”€ voice/               ring buffer Â· VAD state machine Â· synthesis Â· LiveKit Â·
-â”‚                         stt_engine.py (Deepgram + offline mock)
-â”œâ”€â”€ agent/               orchestrator Â· prompts Â· interview flow Â· cognition
-â”œâ”€â”€ telemetry/           per-stage metrics Â· PII-gated tracing
-â”œâ”€â”€ db/                  Primary DB: SQLAlchemy models + Alembic migrations
-â””â”€â”€ api/                 API Gateway: FastAPI app, session/admin/health routes,
-                          Session State store
-
-frontend/
-â””â”€â”€ src/
-    â”œâ”€â”€ api/client.ts        typed fetch wrapper over the API Gateway
-    â”œâ”€â”€ hooks/                useActiveSession (candidate session persistence),
-    â”‚                         useMicRecorder (MediaRecorder wrapper)
-    â”œâ”€â”€ pages/candidate/      Intake -> Interview -> Results
-    â””â”€â”€ pages/admin/          Dashboard (sessions + system status), session detail
+```bash
+curl -X POST localhost:8000/api/candidates/import \
+  -H 'Content-Type: application/json' \
+  -d '{"candidates": [{"name": "...", "whatever_your_scraper_emits": {...}}]}'
 ```
 
----
+Or paste the array straight into "Import scraped JSON" in the left rail.
 
-## Full-stack architecture
+Two fields are lifted out of the blob into columns for display — a name and a
+headline, looked for under the keys a scraper is likely to use (`name`,
+`full_name`, `displayName`, `headline`, `title`, `position`, …). Everything
+else is stored verbatim and read by the model as-is. A record with no
+recognisable name is kept, not dropped, as "Unknown candidate".
 
-The architecture diagram this project targets has thirteen components. Here is
-what each one is, and where it lives in this repository:
+`python -m app.main export` prints the demo pool in exactly the shape the
+route expects, as a template.
 
-| Component | Implementation | Notes |
-|---|---|---|
-| Candidate App | `frontend/src/pages/candidate/*` | React + TypeScript. Resume intake, live turn-by-turn interview (voice + text), results. |
-| Admin Dashboard | `frontend/src/pages/admin/*` | Session list, system status, per-session evaluation detail. |
-| API Gateway | `app/api/app.py` | FastAPI. CORS, request metrics middleware, routers below. |
-| Voice Orchestrator | `app/agent/orchestrator.py` | Unmodified from the original voice-agent core â€” the API layer drives the same `speculate()` / `commit()` sequence the LiveKit worker and the offline demo already used. |
-| STT / Speech Recognition | `app/voice/stt_engine.py` | **New.** Real Deepgram prerecorded-REST provider + offline mock, mirroring the existing cognition/synthesis provider pattern. |
-| Moss Retrieval | `app/storage/retrieval.py` | Unmodified â€” already on the hot path; the API layer just surfaces `retrieval_backend` in responses. |
-| LLM / Agent processing | `app/agent/cognition.py` | Unmodified. |
-| Speech Synthesis | `app/voice/moss_engine.py` | Unmodified; `app/api/audio.py` is new glue that packages its frame stream into a WAV for a browser `<audio>` element. |
-| Primary DB | `app/db/` | **New.** SQLAlchemy models (`sessions`, `turns`, `evaluations`) + Alembic migrations. SQLite by default, Postgres via `DATABASE_URL`. |
-| Session State | `app/api/session_store.py` | **New.** In-process registry of live orchestrators (they hold open streams and can't be serialized), with an optional Redis mirror of session *status* for multi-replica admin visibility. |
-| LangFuse Telemetry | `app/telemetry/langfuse_tracer.py` | Unmodified â€” already wired into the orchestrator; unaffected by this work. |
-| Metrics & Alerts | `app/api/routes_health.py` | **New.** Prometheus `/metrics` (real counters/histograms wired into actual request handling, not placeholders), `/health`, `/ready`. |
-| Docker | `Dockerfile.api`, `frontend/Dockerfile`, `docker-compose.yml` | **New.** |
+## API
 
-Two decisions worth being explicit about:
+Every route is under `/api` and gated by `X-Admin-Token` when
+`HRTE_ADMIN_TOKEN` is set.
 
-- **The Candidate App and Admin Dashboard are one Vite project with
-  route-based separation** (`/` vs `/admin`), not two separate deployables.
-  They share an API client and a design-token stylesheet; splitting them into
-  separate `npm` projects would have doubled the build/deploy surface for no
-  functional benefit at this scale. Each still gets its own Docker service
-  conceptually â€” in practice they're the same static bundle.
-- **The voice orchestration core was not rewritten.** Every file under
-  `app/agent`, `app/voice/{ring_buffer,vad_stream,moss_engine,livekit_worker}.py`,
-  and `app/storage` is exactly as it was; the 250 tests covering them still
-  pass unchanged. What's new is everything needed to reach that core over
-  HTTP from a browser instead of only from a terminal or a LiveKit room.
+| Route | Does |
+| --- | --- |
+| `POST /api/candidates/import` | Ingest scraped records |
+| `POST /api/candidates/demo` | Load the bundled demo pool, pre-ranked (refuses if the pool isn't empty) |
+| `GET /api/candidates` | The ranked pool: best first, unscored last |
+| `GET /api/candidates/{id}` | One candidate plus their full stored record |
+| `DELETE /api/candidates/{id}` | Remove one |
+| `POST /api/analyze` | Score the whole pool in one comparative pass |
+| `POST /api/chat` | Ask a question; returns the answer plus which records it read |
+| `GET /api/status` | Pool counts, the model and retrieval backend in use, and whether either is failing |
 
----
+`/health`, `/ready` and `/metrics` are unauthenticated, because a gated
+health check makes the platform mark a healthy service down.
 
-## Deterministic evaluation
+Interactive docs at `/api/docs`.
 
-Role assignment changes what a person is asked and how they are scored, so it is
-**not** delegated to a model. It is IDF-weighted signal matching against
-version-controlled rubrics:
+## Retrieval
 
-- a signal claimed by one rubric (`flashattention`) is near-decisive;
-- a signal claimed by six (`kubernetes`) says almost nothing;
-- weighting by inverse role frequency makes the matcher discriminative without
-  any training data, and makes every score traceable to a numbered rubric line.
+A question is a **search first, a generation second**. The manager asks "who
+has the strongest distributed systems evidence?", the pool is searched, and
+only the records that matched go to the model.
 
-Nine hand-written candidate profiles route **9/9** correctly, with the same
-ordering on every run. Retrieval agrees independently on all nine â€” meaningful
-corroboration, since the two use entirely different mechanisms.
+This is not an optimisation, it is what makes the product work at size.
+Putting the whole pool in the prompt caps you at a couple of hundred records,
+and a model holding two hundred profiles reads them all with equal attention —
+it answers worse than one shown the six that matter.
 
-**Recommendation gates, in deliberate order:**
+Two backends:
 
-1. **Insufficient evidence wins over everything.** A call that dropped after one
-   question is `INCOMPLETE`, never `DO_NOT_ADVANCE`. Rejecting someone because
-   the network failed is the worst outcome this system can produce.
-2. **Elimination gates beat a high aggregate.** You can be strong on three
-   dimensions and still fail the one that defines the role.
-3. A strong candidate who trips one gate becomes `HOLD_FOR_HUMAN_REVIEW` â€” the
-   gate may simply have been probed badly. That is a human's call.
+| | |
+| --- | --- |
+| **[Moss](https://usemoss.dev)** | Semantic. "Who handled failure under load" finds a record saying "split brain during a partition" without either phrase sharing a word. Needs `MOSS_PROJECT_ID` and `MOSS_PROJECT_KEY`. |
+| **Local** | TF-IDF cosine in pure Python. No credentials, no network, deterministic, sub-millisecond at pool scale. **Lexical**: it only matches words the record actually contains. |
 
----
+The difference is real and the product does not hide it. Every answer in the
+dashboard carries a line saying what it read — *"Read 2 of 9 records · local
+(lexical) · 0.43ms"* — with the matched candidates as clickable chips, and
+`/api/status` reports the backend plus whether a configured Moss has started
+failing.
 
-## Zero-PII by construction
+Ranking is the exception: `POST /api/analyze` still sends the **whole** pool
+in one call, deliberately. Ranking is comparative, and narrowing it would mean
+scoring candidates against a subset of the field and calling the result a
+ranking.
 
-Resumes carry Aadhaar numbers, addresses, and phone numbers. Four egress
-boundaries can leak them: the model, the vector store, telemetry, and disk.
+## Three things worth knowing
 
-The scrubber is **single-pass**: every pattern scans the original text, overlaps
-resolve by fixed precedence, and the text is spliced once. The obvious
-`re.sub` cascade is wrong in two ways that bite â€” pass *N* matches inside pass
-*Nâˆ’1*'s output, and every substitution destroys the offset mapping that
-downstream span annotations depend on.
+**"A key is set" is not "the key works".** A deployment whose every model
+call 4xx's looks identical from the outside to a healthy one — this project
+lost hours to exactly that, twice, once to a retired model pin and once to
+thinking tokens eating the whole output budget. So every fallback to the
+offline mock is counted, and `/api/status` reports `degraded: true` the
+moment a *configured* model fails. The dashboard shows it as an amber pill.
+Offline-by-choice and broken-in-production are different states and the UI
+never conflates them. Retrieval is counted the same way, for the same reason.
 
-Guaranteed and tested: **deterministic**, **idempotent**, **total**, and
-**offset-traceable**.
+**Candidates are never named to the model by their database id.** Records go
+into the prompt as `C1`, `C2`, … and the mapping back never leaves the
+process. Candidate ids are UUIDs, and a UUID run through the PII scrubber has
+a ~5% chance of partial redaction — slices of one look like an Aadhaar number,
+a passport or a payment card. The model then echoes the mangled id back, it
+matches no row, and that candidate is silently left unscored. On a 200-record
+pool that was ~10 people stuck at `--` on every run with nothing to say why.
 
-**Cryptographic, not merely lossy.** Every redacted identifier is also reduced
-to a **keyed BLAKE2b fingerprint**, so the same phone number submitted twice
-produces the same digest and duplicate applications are detectable â€” without
-anything reversible ever being stored. Keyed rather than plain, deliberately: a
-10-digit phone number is only 10Â¹â° candidates, so an *unkeyed* digest of one is
-the number. With `HRTE_REDACTION_KEY` unset the process generates an ephemeral
-key, so fingerprints stop linking across restarts rather than becoming
-guessable â€” the safe failure, and the one you notice.
+**PII is redacted once, on the way in.** `app/ingest.py` is the only path a
+record takes into the database, and it scrubs there. Everything downstream —
+the database, the model prompt, the dashboard, the export — only ever sees
+scrubbed text. That is the only arrangement that can be audited by reading a
+single function. Identifiers are replaced with typed tokens plus a one-way
+keyed BLAKE2b fingerprint, so two records belonging to the same person can
+still be matched without the identifier being kept.
 
-| Redacted | Preserved |
-|---|---|
-| Aadhaar, PAN, SSN, passport, Korean RRN, Japanese MyNumber | `p99 under 45ms` |
-| Email, phone (E.164/NANP/India), payment cards | `512 A100s`, `2019-2023` |
-| Street addresses, postal codes, GPS coordinates | `HNSW m=16, ef_construct=100` |
-| API keys, JWTs, AWS keys, PEM private keys | `99.99 percent uptime` |
-
-That second column is not a footnote. A scrubber that eats `p99 under 45ms`
-destroys the exact evidence the rubric scores. **Zero false positives** on the
-technical corpus.
-
-Idempotence is *structural*: a regex rejects any candidate match that overlaps a
-replacement token, so no detector can re-redact its own output. This was found
-by a failing test â€” the generic passport rule was matching the word `REDACTED`
-inside `<PHONE_REDACTED>`.
-
----
+The scrubber is tuned hard against false positives: `p99 from 1200ms to
+160ms`, `512 A100s`, `RFC 7519`, `ef_construct=100` all survive intact,
+because a scrubber that eats the numbers eats the evidence the ranking is
+built on.
 
 ## Configuration
 
-Everything has a default that works with **zero infrastructure**. With no
-credentials the agent runs fully offline â€” deterministic embeddings, in-process
-index, mock cognition and synthesis. That is what CI and `make demo` exercise.
+Everything is optional. See `.env.example` for the annotated list.
 
-| Variable | Purpose |
-|---|---|
-| `MOSS_PROJECT_ID` / `MOSS_PROJECT_KEY` | Moss retrieval runtime (hot path) |
-| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | WebRTC transport |
-| `GOOGLE_API_KEY` | Streaming cognition |
-| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Tracing |
-| `QDRANT_URL` | Cold dossier archive (optional) |
-| `HRTE_SPEECH_*` | MOSS-Speech synthesis (distinct from Moss above) |
-| `DEEPGRAM_API_KEY` | Speech-to-text for the Candidate App (optional; offline mock otherwise) |
-| `DATABASE_URL` | Primary DB â€” empty = SQLite, or a Postgres URL |
-| `REDIS_URL` | Session State mirror (optional; in-process otherwise) |
-| `HRTE_CORS_ORIGINS` | Allowed origins for the API Gateway |
-| `HRTE_ADMIN_TOKEN` | Optional gate on `/api/admin/*` |
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `GOOGLE_API_KEY` | — | The one that matters. Unset ⇒ offline analyst |
+| `HRTE_MODEL` | `gemini-flash-latest` | A floating alias on purpose: pinned versions get retired |
+| `HRTE_TEMPERATURE` | `0.4` | |
+| `HRTE_MAX_OUTPUT_TOKENS` | `2048` | |
+| `HRTE_THINKING_BUDGET` | `0` | Billed out of max output tokens. Raise both together or not at all |
+| `MOSS_PROJECT_ID` / `MOSS_PROJECT_KEY` | — | Both needed. Unset ⇒ local lexical retrieval |
+| `HRTE_MOSS_INDEX` | `candidate_pool` | Index name inside your Moss project |
+| `HRTE_RETRIEVAL_TOP_K` | `12` | How many records one answer may read |
+| `DATABASE_URL` | SQLite under `./data` | |
+| `HRTE_ADMIN_TOKEN` | — | Set this on any public URL |
+| `HRTE_REDACTION_KEY` | ephemeral | Set it so fingerprints survive a restart |
+| `HRTE_CORS_ORIGINS` | `*` | Credentials only allowed with an explicit list |
+| `HRTE_PII_MODE` | `strict` | |
 
-See [`.env.example`](.env.example) for the full annotated set.
+## Deploying
 
----
+`render.yaml` is a Render blueprint: API + dashboard + Postgres, all on free
+plans. It generates an admin token and a redaction key for you; the only
+value you fill in by hand is `GOOGLE_API_KEY`.
 
-## OpenGAP compliance
+Locally, `docker compose up --build` brings up the same two images.
 
-`agent.yaml`, `SOUL.md` and `EXPLAINABILITY.md` conform to the GitAgent Passport
-specification and are validated by tests rather than by inspection â€”
-`SOUL.md` is *loaded at runtime* to build the system prompt, so an edit that
-improves the prose but breaks a heading would silently change how the agent
-introduces itself.
+Either way, a fresh deployment starts empty. Click **Load demo pool** in the
+left rail to populate it, or POST your scraper's output at the import route.
+
+## Development
 
 ```bash
-python -m app.main verify
+make test           # backend suite; warnings are errors
+make lint           # ruff check + format check
+make frontend-test  # frontend unit tests
+make verify         # config + PII scrubber report
 ```
 
----
+The test suite runs entirely offline — the mock analyst is a real provider
+that produces well-formed rankings, not a stub that returns an apology, so
+nothing here needs network or credentials.
 
-## Testing
+## Layout
 
 ```
-276 tests, zero warnings (filterwarnings = ["error"])
-
- 16  OpenGAP compliance      manifest, SOUL.md, EXPLAINABILITY.md
- 82  PII redaction           coverage Â· false positives Â· algebra Â· crypto Â· gates
- 21  latency budget          per-stage, end-to-end, percentiles, speculation
- 82  role evaluation         9/9 routing, determinism, gate ordering
- 15  barge-in                epoch invalidation, drain deadline, recovery
- 34  Moss retrieval          index lifecycle, 9/9 routing, degradation, budget
- 26  API / DB / STT layer    session lifecycle, auth, admin, health, migrations
+app/
+  agent/analyst.py        the two calls: rank a pool, answer a question
+  agent/cognition.py      Gemini + the offline mock behind one protocol
+  retrieval.py            Moss + the local index behind one protocol
+  api/routes_candidates.py  the whole HTTP surface
+  security/pii_scrubber.py  redaction, fingerprinting, false-positive defence
+  ingest.py               the single path a record takes into the database
+  demo_pool.py            9 deliberately messy records + baseline rankings
+frontend/src/
+  pages/DashboardPage.tsx the dashboard
+  api/client.ts           typed fetch wrapper
 ```
+<<<<<<< HEAD
 
 The Moss SDK is optional, so a suite that skipped without it would leave the
 integration unverified in CI. Instead a fake `moss` module implementing the
@@ -689,3 +513,5 @@ Required environment variables:
 ## License
 
 MIT
+=======
+>>>>>>> a12cd5831229344cfe567d2f98949cf2442622d7

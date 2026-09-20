@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 services:
   - type: web
     name: hr-talent-evaluator
@@ -7,10 +8,61 @@ services:
     envVars:
       - key: HRTE_ENV
         value: production
+=======
+# Render Blueprint -- one command deploy: `render blueprint launch` (or
+# "New +" -> "Blueprint" in the Render dashboard), pointed at this repo.
+#
+# Both services build from the repo's own Dockerfiles, so nothing here is
+# Render-specific: `docker compose up --build` and this blueprint deploy the
+# identical images.
+#
+# GOOGLE_API_KEY is the only credential that changes the product. Without it
+# the app still deploys and runs -- the dashboard just reports "Offline
+# analyst" and the rankings come from the bundled baseline rather than a
+# model. Set it in the Render dashboard (or `render env set`) to turn that on.
+
+databases:
+  - name: hr-talent-evaluator-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: hr-talent-evaluator-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: HRTE_ENV
+        value: production
+      - key: HRTE_PII_MODE
+        value: strict
+
+      # The pool holds candidate records, so a public URL needs a token.
+      # generateValue makes one; read it off the dashboard and paste it into
+      # the header field in the top right of the UI.
+      - key: HRTE_ADMIN_TOKEN
+        generateValue: true
+
+      # A keyed fingerprint survives restarts, so "same person, two records"
+      # stays answerable without storing the identifier.
+      - key: HRTE_REDACTION_KEY
+        generateValue: true
+
+      # The frontend's origin. Set once the frontend service has a URL.
+      - key: HRTE_CORS_ORIGINS
+        sync: false
+
+>>>>>>> a12cd5831229344cfe567d2f98949cf2442622d7
       - key: DATABASE_URL
         fromDatabase:
           name: hr-talent-evaluator-db
           property: connectionString
+<<<<<<< HEAD
       - key: REDIS_URL
         fromService:
           name: hr-talent-evaluator-redis
@@ -57,3 +109,46 @@ databases:
 redis:
   - name: hr-talent-evaluator-redis
     plan: free
+=======
+
+      # The one key worth setting. https://aistudio.google.com/apikey
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: HRTE_MODEL
+        value: gemini-flash-latest
+      - key: HRTE_TEMPERATURE
+        value: "0.4"
+      - key: HRTE_MAX_OUTPUT_TOKENS
+        value: "2048"
+      - key: HRTE_THINKING_BUDGET
+        value: "0"
+
+      # Semantic retrieval over the pool. Optional: without these, retrieval
+      # falls back to a local lexical index and the dashboard says so.
+      # https://usemoss.dev
+      - key: MOSS_PROJECT_ID
+        sync: false
+      - key: MOSS_PROJECT_KEY
+        sync: false
+      - key: HRTE_MOSS_INDEX
+        value: candidate_pool
+      - key: HRTE_RETRIEVAL_TOP_K
+        value: "12"
+
+  - type: web
+    name: hr-talent-evaluator-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    region: singapore
+    envVars:
+      # Injected into the page at container start (see frontend/Dockerfile),
+      # not baked in at build time, so the same image works in any
+      # environment.
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: hr-talent-evaluator-api
+          property: hostport
+>>>>>>> a12cd5831229344cfe567d2f98949cf2442622d7

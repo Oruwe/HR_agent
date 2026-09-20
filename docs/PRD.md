@@ -1,48 +1,43 @@
 # Product Requirements Document
 
-**Product:** `hr-talent-evaluator` — voice-native technical screening agent
-**Version:** 1.0.0
-**Status:** Built, tested, benchmarked
-**Submission:** YC Fall 2026 × Moss — The Zero Latency Builder Sprint, Track 1 (Real-Time Voice & Conversational AI)
+**Product:** `hr-talent-evaluator` — an AI hiring analyst over scraped candidate data
+**Version:** 2.0.0
+**Status:** Built, tested, deployed
 
 ---
 
 ## 1. Problem
 
-### 1.1 The hiring funnel's worst bottleneck
+A hiring manager with an open engineering role ends up with a folder of
+scraped profiles — from a sourcing tool, a LinkedIn export, a scraper someone
+on the team wrote. Two hundred records for one opening is normal.
 
-A mid-size technology company running 40 engineering roles receives on the order
-of 200 applications per role. The first technical filter — a 15-minute screening
-call — costs roughly 25 minutes of a senior engineer's time once scheduling,
-context-switching and write-up are counted.
+What happens to them is the problem:
 
-That produces three failures that compound:
+1. **They get read by keyword.** Nobody reads 200 profiles carefully, so they
+   get filtered on whether the word "Kubernetes" appears — the least
+   predictive signal available. A record describing a zero-downtime ledger
+   migration and a record listing "distributed systems" as a skill look the
+   same to a keyword filter.
+2. **The reading is not comparable.** Profile 4 is read at 9am and profile 180
+   at 6pm on a different day. The bar drifts. There is no artefact afterwards
+   explaining why anyone was dropped.
+3. **Thin records are indistinguishable from weak candidates.** A scraped
+   profile with three lines on it is usually a scraping failure, not a bad
+   engineer — but under time pressure both end up in the same pile.
 
-1. **Throughput collapse.** Nobody has 3,300 engineer-hours per hiring cycle, so
-   most applicants are filtered on résumé keywords instead — the least
-   predictive signal available.
-2. **Inconsistency.** Two candidates for the same role get different questions
-   from different interviewers on different days. Their scores are not
-   comparable, which makes the entire funnel's output unauditable.
-3. **Latency in the loop.** Screening backlogs push time-to-first-signal out by
-   one to three weeks. Strong candidates accept other offers inside that window.
+### 1.1 Why "just use an LLM" isn't the whole answer
 
-### 1.2 Why existing voice agents do not solve it
+Pasting profiles into a chat window one at a time produces a per-candidate
+opinion, not a ranking. Ranking is inherently comparative: "stronger than the
+other three on distributed systems" is a statement a model can only make if it
+was shown the other three. One-at-a-time scoring also drifts — the same record
+scores differently depending on what preceded it.
 
-The naïve solution — point an LLM voice agent at the problem — fails on the
-dimension candidates notice first.
-
-A standard cascaded pipeline (wait for silence → transcribe → retrieve →
-generate → synthesise) takes **1,500–4,000ms per turn**. Human conversational
-floor-transfer is roughly **200ms**. An agent operating an order of magnitude
-slower is not a slow interviewer; it is an uncanny one. Candidates talk over it,
-repeat themselves, and disengage — and this is a conversation in which they are
-already being judged.
-
-Worse, the usual fix for "the agent asks generic questions" is retrieval, and
-retrieval against a hosted vector database costs 15–40ms of network round trip
-before the index does any work. So teams face a false choice: ask worse
-questions, or feel slower.
+And a model given a hiring question will confidently answer it whether or not
+the record supports an answer. Without an explicit instruction to say "the
+evidence is thin", it invents a reason, which is worse than silence because it
+looks like signal.
 
 ---
 
@@ -51,267 +46,182 @@ questions, or feel slower.
 ### 2.1 Goals
 
 | # | Goal | Measure |
-|---|---|---|
-| G1 | Conversational presence | ≤160ms from endpoint commit to first audio byte, p95 |
-| G2 | On-rubric questioning | Rubric context retrieved on every turn in <10ms |
-| G3 | Comparable evaluations | Identical rubric, identical order, deterministic scores |
-| G4 | Interruptible | Queued agent audio stops being heard within 15ms of barge-in |
-| G5 | Zero PII egress | No identifier reaches model, store, trace, or disk |
-| G6 | Auditable decisions | Every recommendation traces to a numbered rubric line |
-| G7 | Operable | Runs with zero infrastructure for dev/CI; degrades, never drops |
+| --- | --- | --- |
+| G1 | Rank a whole pool comparatively | One model call covers the pool; scores span the range |
+| G2 | Every verdict cites evidence | Each rationale names a project, system, number or role from the record |
+| G3 | Thin records are called thin | "Not enough here to judge" is an available and used verdict |
+| G4 | Answer questions against the pool | Manager asks in plain language; answers are grounded in stored records |
+| G5 | Accept any scraper's output | Import imposes no schema beyond "it's a JSON object" |
+| G6 | Zero PII egress | No identifier reaches the model, the database, or the dashboard |
+| G7 | Degradation is visible | A configured model that is failing is reported, not silently mocked |
+| G8 | Works with nothing configured | No credentials ⇒ a functioning, honestly-labelled board |
+| G9 | Scale past a promptful of candidates | A question retrieves its records; only those reach the model |
 
 ### 2.2 Non-goals
 
-- **Not an offer engine.** The agent never extends offers, discusses
-  compensation, or commits to next steps. It produces a dossier; humans decide.
-- **Not a replacement for a full technical interview.** It is a *screen*, sized
-  at 15 minutes and 12 turns.
-- **Not a coding assessment.** It cannot evaluate whiteboard diagrams or live
-  coding, and says so in `EXPLAINABILITY.md`.
-- **Not a résumé parser product.** Résumé text is one evidence channel, not the
-  deliverable.
+- **Interviewing candidates.** There is no candidate-facing surface. An
+  earlier version of this project was a voice interviewer; that is removed.
+- **Scraping.** Data collection belongs to whatever tool the team already
+  uses. This consumes its output.
+- **Deciding.** The analyst is advisory. A human makes every hiring decision,
+  and the product's language never implies otherwise.
+- **ATS features.** No scheduling, no email, no offer workflow.
 
 ---
 
 ## 3. Users
 
-| User | Needs | Success looks like |
-|---|---|---|
-| **Candidate** | To be evaluated fairly by something that feels present and does not waste their evening | Finishes the call without noticing latency; questions engaged with what they actually said |
-| **Hiring manager** | A defensible shortlist, fast | Dossier with per-competency scores, cited evidence, explicit limitations |
-| **Recruiter / ops** | Throughput without headcount | Screens run concurrently, 24/7, at consistent quality |
-| **Compliance / legal** | No PII retention, explainable automated decisions | Zero-leak invariant enforced by tests; scores trace to rubric lines |
+One: the hiring manager or founder who owns an opening and has a pile of
+profiles. They are not a recruiter, they do not have a sourcing team, and the
+time they can spend on first-pass filtering is measured in minutes.
 
 ---
 
-## 4. Solution
+## 4. Requirements
 
-### 4.1 Core insight
+### 4.1 Import
 
-The 1,500ms turnaround is **architectural, not physical**. Most of it is spent
-waiting in sequence for work that could have started earlier.
+| # | Requirement |
+| --- | --- |
+| R1 | Accepts an array of arbitrary JSON objects |
+| R2 | Stores each record verbatim, minus redactions — no field is dropped for being unrecognised |
+| R3 | Lifts a name and a headline out of the blob for display, checking the keys a scraper is likely to use |
+| R4 | A record with no recognisable name is kept as "Unknown candidate", never dropped |
+| R5 | Redaction happens at import, in one place, before anything is stored |
+| R6 | Reports how many records contained PII |
 
-Two changes recover almost all of it:
+### 4.2 Ranking
 
-1. **Speculative turn-taking.** Start retrieving and generating at 120ms of
-   silence; commit at 250ms. The 130ms window is paid for by silence the
-   candidate is producing anyway. If they resume, discard the draft — the cost
-   is compute, not latency.
-2. **In-process retrieval.** Moss runs inside the worker, so fetching rubric
-   context is a function call rather than a network hop. This is what makes the
-   10ms retrieval line item real rather than aspirational.
+| # | Requirement |
+| --- | --- |
+| R7 | The whole pool goes to the model in one call |
+| R8 | Every candidate gets a score in [0, 1], a verdict, and a rationale |
+| R9 | Verdicts are a fixed three-rung ladder: INTERVIEW / MAYBE / PASS |
+| R10 | Malformed model output leaves the pool unranked rather than scored arbitrarily |
+| R11 | Model output is scrubbed on the way back in — a model can echo PII from a record it was shown |
+| R12 | Re-running updates rows in place; it never duplicates candidates |
 
-### 4.2 Why Moss specifically
+The verdict ladder is deliberately short. Free-text verdicts cannot be
+filtered, sorted or audited, and "strong hire" vs "hire" vs "leaning hire" is a
+distinction nobody applies consistently across a pool.
 
-Retrieval answers one question per turn: *which rubric competency is this
-candidate demonstrating right now?* The answer steers the next question.
+### 4.3 Conversation
 
-- Under 10ms → the interviewer stays on-rubric at no perceptible cost.
-- At 50ms (hosted vector DB) → either the budget breaks, or you stop retrieving
-  and ask worse questions.
+| # | Requirement |
+| --- | --- |
+| R13 | A question searches the pool first; only the matched records reach the model |
+| R14 | The answer reports how many records it read, out of how many, and by which backend |
+| R15 | A search matching nothing falls back to the head of the pool, not to an empty context |
+| R16 | Prior turns are carried as history |
+| R17 | The manager's own question is scrubbed — they will paste a resume into the box |
+| R18 | An empty pool answers honestly rather than erroring |
+| R19 | A deleted candidate can never appear in an answer, even if a remote index lags |
 
-Moss is a **search runtime, not a database**, which removes the network hop
-entirely and eliminates a service to operate. The rubric corpus — 36 documents,
-one per competency — is static and version-controlled, indexed once at session
-open behind the fixed greeting, so no turn ever pays for indexing.
+### 4.4 Dashboard
 
-### 4.3 Feature set
+| # | Requirement |
+| --- | --- |
+| R20 | Three columns: pool context and controls, ranked scores, the analyst |
+| R21 | Candidates are ordered best-first, unscored last |
+| R22 | Filter by verdict; search across name, role and rationale |
+| R23 | Opening a candidate shows the stored record exactly as the model saw it |
+| R24 | Every answer shows which records it was grounded in, as links to those records |
+| R25 | Model and retrieval status — offline, live, or degraded — visible without a console |
+| R26 | Usable at phone width |
 
-| Feature | Description |
-|---|---|
-| Live voice screening | LiveKit WebRTC, 20ms frames, 48kHz mono PCM16, real barge-in |
-| Nine engineering tracks | AI/ML Systems, Frontend Platform, Distributed Backend, DevOps/SRE, Full Stack, Mobile Core, Security/DevSecOps, Data Platform, Solutions Architect |
-| Deterministic routing | IDF-weighted rubric matching; 9/9 accuracy, reproducible |
-| Adaptive probing | Per-competency probe selection, heaviest weight first, coverage-tracked |
-| Structured tool calling | `record_candidate_competency`, `trigger_role_transition`, `terminate_screening_session` |
-| PII redaction | Aadhaar, PAN, SSN, passport, Korean RRN, Japanese MyNumber, email, phone, address, coordinates, cards, credentials — each replaced with a typed token and a keyed BLAKE2b fingerprint |
-| Evaluation dossier | Per-competency scores with evidence source, elimination flags, alternate role fits, recommendation |
-| Observability | Per-stage spans, percentile reporting, `latency_exceeded` alarms, PII-gated payloads |
+### 4.5 Operations
 
----
-
-## 5. Requirements
-
-### 5.1 Functional
-
-| ID | Requirement | Status |
-|---|---|---|
-| F1 | Conduct bidirectional voice screening over WebRTC | ✅ |
-| F2 | Detect end-of-turn and commit within the configured silence window | ✅ |
-| F3 | Interrupt agent playback on candidate barge-in | ✅ |
-| F4 | Route candidates to one of nine rubrics deterministically | ✅ |
-| F5 | Retrieve the matching competency on every turn | ✅ |
-| F6 | Score competencies from live evidence via tool calls | ✅ |
-| F7 | Produce a dossier with recommendation and cited limitations | ✅ |
-| F8 | Redact all PII before any egress | ✅ |
-| F9 | Emit per-stage latency telemetry | ✅ |
-| F10 | Operate fully offline with no credentials | ✅ |
-
-### 5.2 Non-functional
-
-| ID | Requirement | Target | Measured |
-|---|---|---|---|
-| N1 | Turnaround, p95 | ≤160 ms | **12.6 ms** |
-| N2 | Rubric retrieval, p95 | ≤10 ms | **0.70 ms** |
-| N3 | Barge-in drain | ≤15 ms | **0.036 ms** |
-| N4 | Barge-in detection | ≤30 ms sustained speech | 40 ms (2 frames) |
-| N5 | Unredacted PII at any boundary | 0 | **0** |
-| N6 | False positives on technical prose | 0 | **0** |
-| N7 | Role routing accuracy | 9/9 | **9/9** |
-| N8 | Test suite warnings | 0 | **0** |
-
-### 5.3 Constraints
-
-- **C1 — Budget coherence.** Stage budgets must sum to exactly 160ms; enforced
-  at import, not by convention.
-- **C2 — No infrastructure for dev.** The full pipeline and full test suite run
-  with zero services.
-- **C3 — Graceful degradation.** No single dependency failure may end a live
-  interview. Moss, Gemini, LiveKit, Qdrant and Langfuse each degrade
-  independently.
-- **C4 — Determinism.** Identical input produces byte-identical scrubbing and
-  identical role assignment, across processes and machines.
+| # | Requirement |
+| --- | --- |
+| R27 | Every `/api` route is gated by an admin token when one is set |
+| R28 | Health and readiness are never gated |
+| R29 | A failing *configured* model is reported as `degraded`, distinctly from offline-by-choice |
+| R30 | The same holds for retrieval: a failing *configured* Moss is reported, not hidden |
+| R31 | A fresh deployment can be populated from the UI, with no shell access |
 
 ---
 
-## 6. Design decisions
+## 5. Design decisions
 
-Decisions worth defending, and what was rejected.
+### 5.1 No rubric engine
 
-### D1 — Role assignment is not a model call
-**Chosen:** IDF-weighted signal matching against version-controlled rubrics.
-**Rejected:** asking the LLM "which role is this?"
-**Why:** role assignment changes what a person is asked and how they are scored.
-It must be reproducible and explainable line by line. A model's opinion is
-neither, and it cannot be re-derived during a fairness audit two years later.
+An earlier version scored candidates against nine hand-written engineering
+rubrics with a deterministic matcher. It was removed. The rubric only ever
+matched the roles someone had thought to write down, and a keyword matcher
+dressed up as judgement is still a keyword matcher — it scored a record
+mentioning "Kubernetes" above one describing the operator its author wrote.
+Ranking is now the model's, in full, with the rationale shown so the manager
+can disagree with it.
 
-### D2 — Per-competency documents, not per-role
-**Chosen:** 36 documents.
-**Rejected:** 9 documents.
-**Why:** a whole-rubric document is four unrelated competencies concatenated. A
-candidate's answer matches one; averaging against the other three buries the
-signal. Measured improvement in top-1 retrieval: 95.1% → 98.6% over 24
-independent seeds.
+### 5.2 Schema-agnostic storage
 
-### D3 — Single-pass scrubbing, not a `re.sub` cascade
-**Why:** a cascade lets pass *N* match inside pass *N−1*'s output, and every
-substitution destroys the offset mapping downstream span annotations depend on.
-A structural guard rejects any match overlapping an existing replacement token,
-making idempotence a property of the algorithm rather than of each pattern's
-care. *This bug was found by a failing test — the generic passport rule was
-matching the word `REDACTED` inside `<PHONE_REDACTED>`.*
+The scraped record is stored as a JSON blob and rendered to the model with
+`json.dumps`, not through a formatter. A formatter that knows about the fields
+we happened to see first silently drops everything else the day the scraper
+changes — and the scraper is not ours.
 
-### D4 — Epoch-tagged buffers for barge-in
-**Rejected:** clearing the queue on interrupt.
-**Why:** a producer that decided to push *before* the interrupt completes that
-push afterwards, landing stale audio in a freshly-cleared buffer. Epoch tagging
-makes such a frame invalid on arrival — no lock, no cancellation point, no race.
+### 5.3 The offline provider is a real provider
 
-### D5 — Synthesis and publication are separate tasks
-**Why:** a speech engine generates several times faster than realtime while the
-wire consumes one frame per 20ms, so audio *will* queue between them — and that
-queue is exactly what barge-in must discard. Collapsing them into one loop hides
-the queue and ships interruption behaviour that was never actually tested.
+With no credentials the mock returns well-formed rankings covering exactly the
+candidates it was shown, scored by a transparent heuristic (record richness)
+that every rationale names as such. This makes the product demonstrable with
+zero infrastructure and lets the entire test suite run without network. It is
+never presented as judgement.
 
-### D6 — `INCOMPLETE` outranks `DO_NOT_ADVANCE`
-**Why:** a call that dropped after one question must never be recorded as a
-rejection. Rejecting a candidate because the network failed is the worst outcome
-this system can produce.
+### 5.4 Fallbacks are counted
 
-### D7 — Agent speech excluded from candidate evidence
-**Why:** agent turns contain the rubric's own vocabulary. Scoring against them
-would let the interviewer's questions inflate the candidate's score — the
-classic self-confirming evaluation bug.
+`model_configured` means "a key is set", not "that key works". A deployment
+whose every call 4xx's is externally indistinguishable from a healthy one —
+this project lost hours to that twice, once to a retired model pin
+(`gemini-2.0-flash`) and once to thinking tokens consuming the entire output
+budget and returning an empty string. Every fallback increments a counter;
+`/api/status` exposes it; the dashboard shows an amber pill.
 
-### D8 — Keyed fingerprints, not plain digests
-**Chosen:** keyed BLAKE2b (a MAC) over every redacted identifier, with an
-ephemeral key when none is configured.
-**Rejected:** a plain digest, or a constant default key.
-**Why:** an unkeyed hash of a 10-digit phone number is not anonymised data —
-the search space is 10¹⁰ and a laptop exhausts it in seconds, so the digest *is*
-the number. Keying makes a guess unconfirmable. Defaulting to an ephemeral key
-when none is set means the failure mode is "fingerprints stop linking", which is
-visible, rather than "fingerprints are guessable", which is not.
+### 5.5 Retrieval before generation
 
-### D9 — Fixed greeting, not a generated one
-**Why:** the greeting is the only turn with no prior audio to hide latency
-behind. Generating it would make the interview's first impression its slowest
-response.
+`POST /api/chat` searches the pool and sends the model only what matched.
+Two backends sit behind one protocol: Moss for semantic search, and a local
+TF-IDF index for deployments with no Moss credentials.
 
----
+The fallback is not presented as an equivalent. It is lexical — it matches
+words the record contains — and both `/api/status` and every answer in the UI
+name the backend that produced them.
 
-## 7. Metrics
+Ranking deliberately does **not** go through retrieval. Ranking is
+comparative; narrowing it would mean scoring candidates against a subset of
+the field and calling the result a ranking.
 
-### 7.1 Product
+### 5.6 Handles, not ids, in prompts
 
-| Metric | Baseline (human screen) | Target |
-|---|---|---|
-| Cost per screen | ~25 engineer-minutes | <$1 compute |
-| Time to first signal | 1–3 weeks | <24 hours |
-| Screens per role | ~8 (budget-limited) | Unlimited |
-| Score comparability | Interviewer-dependent | Identical rubric, identical order |
+Candidates are rendered to the model as `C1`, `C2`, … rather than by their
+database UUID.
 
-### 7.2 Technical (gates CI)
+This started as a bug. A UUID rendered into the prompt is run through the PII
+scrubber like everything else, and ~5% of them come back partially redacted —
+slices of a UUID look like an Aadhaar number, a passport or a payment card.
+The model echoes the mangled id back, it matches no row, and that candidate is
+silently left unscored. Measured at 5.0% over 4000 generated ids; on a
+200-record pool that is ~10 people stuck at `--` per run with nothing in the
+UI to explain it.
 
-- Turnaround p95 ≤160ms, no turn beyond 2× budget.
-- Retrieval p95 ≤10ms.
-- Zero unredacted PII, zero false positives on the technical corpus.
-- 9/9 deterministic role routing.
-- 250 tests, zero warnings.
+Handles remove the failure at the root rather than exempting a pattern: they
+contain no digit runs for any detector to match, cost a fraction of the
+tokens, and models echo `C7` back reliably where they mangle a UUID. A
+ranking for a handle that is not in the pool is dropped rather than guessed
+at — an unscored candidate beats someone else's verdict on them.
 
-### 7.3 Fairness (operational)
+### 5.7 One ingest path
 
-- Elimination-flag rate per role, monitored for drift.
-- `HOLD_FOR_HUMAN_REVIEW` rate — a rising rate means rubric gates are probing
-  badly, not that candidates got worse.
-- Turn count distribution — truncated interviews indicate transport problems.
+`app/ingest.py` is the only way a record enters the database, used by both the
+HTTP route and the CLI. Two ingest paths drift, and the drift shows up as
+unredacted records nobody meant to store.
 
 ---
 
-## 8. Risks
+## 6. Out of scope for this version
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Provider TTFT exceeds the speculation window | Turnaround degrades toward provider latency | Speculation absorbs 130ms; budget and alarms make the overage visible rather than silent |
-| Retrieval outage mid-call | Interviewer drifts off-rubric | Automatic fallback to the embedded index; tested explicitly for mid-call failure |
-| Accented or noisy audio reduces VAD accuracy | Early cut-off or missed turns | Adaptive noise floor, zero-crossing gate, asymmetric hysteresis; documented in `EXPLAINABILITY.md` |
-| Scrubber false positive destroys evidence | Competency scored unfairly low | Dedicated false-positive corpus in CI; zero tolerance |
-| Candidate injects instructions into speech | Prompt injection | Guardrails treat candidate speech as data; routing is deterministic and not model-controlled |
-| Automated decisions face regulatory scrutiny | Legal exposure | Every score traces to a numbered rubric line; no protected attributes are inputs; humans make all decisions |
-
----
-
-## 9. Scope status
-
-**In scope and delivered:** the nine rubrics, voice pipeline with barge-in, Moss
-retrieval with fallback, PII redaction, deterministic evaluation, telemetry,
-OpenGAP compliance, 250 tests, reproducible benchmark, offline demo.
-
-**Deliberately out of scope for this build:**
-- Multilingual screening (rubric signals are English).
-- Video / whiteboard evaluation.
-- ATS integrations (Greenhouse, Lever).
-- Candidate-facing scheduling UI.
-- Model fine-tuning — rubrics are version-controlled data, which is the point.
-
----
-
-## 10. Appendix — measured results
-
-```
-Retrieval (rubric lookup)      p50 0.59ms   p95 0.70ms   p99 0.81ms   budget 10ms    PASS
-Turnaround (with speculation)  p50 12.5ms   p95 12.6ms   p99 12.7ms   budget 160ms   PASS
-Turnaround (sequential)        p50 43.1ms   p95 43.5ms   p99 43.8ms   budget 160ms   PASS
-
-Speculation saves a median of 30.6ms per turn — 71% of the sequential cost.
-```
-
-Reproduce with `python scripts/benchmark.py --iterations 60`. No credentials
-required.
-
-**Measurement honesty:** these are measured against modelled component costs
-(30ms cognition TTFT, 12ms to first audio frame) on the offline providers. Real
-end-to-end turnaround adds whatever your inference provider's TTFT exceeds the
-130ms speculation window. The claim being made is not that physics was defeated;
-it is that **the orchestration contributes ~13ms rather than ~1,500ms**, and
-every millisecond of retrieval moved off the network is a millisecond kept.
+- Per-role rankings (the analyst currently ranks against "worth the manager's
+  time", not a specific job description)
+- De-duplicating the same person across two scraped sources, though the keyed
+  fingerprints make it possible
+- Anything write-back to the source system
