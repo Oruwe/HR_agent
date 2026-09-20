@@ -177,6 +177,10 @@ class Settings(BaseModel):
 
     # -- speech-to-text ---------------------------------------------------------
     deepgram_api_key: str = ""
+    
+    # -- ElevenLabs voice AI ----------------------------------------------------
+    elevenlabs_api_key: str = ""
+    elevenlabs_agent_id: str = ""
 
     # -- telemetry ------------------------------------------------------------
     langfuse_public_key: str = ""
@@ -272,6 +276,8 @@ def load_settings() -> Settings:
         qdrant_api_key=_env("QDRANT_API_KEY"),
         qdrant_collection=_env("HRTE_QDRANT_COLLECTION", "engineering_talent_rubrics"),
         deepgram_api_key=_env("DEEPGRAM_API_KEY"),
+        elevenlabs_api_key=_env("ELEVENLABS_API_KEY"),
+        elevenlabs_agent_id=_env("ELEVENLABS_AGENT_ID"),
         langfuse_public_key=_env("LANGFUSE_PUBLIC_KEY"),
         langfuse_secret_key=_env("LANGFUSE_SECRET_KEY"),
         langfuse_host=_env("LANGFUSE_HOST", "https://cloud.langfuse.com"),
