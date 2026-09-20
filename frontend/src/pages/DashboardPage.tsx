@@ -18,8 +18,17 @@ export default function DashboardPage() {
       const response = await fetch('/api/voice/token');
       if (!response.ok) throw new Error('Failed to get voice token');
       
-      const { signed_url } = await response.json();
-      await startSession({ signedUrl: signed_url });
+      const { signed_url, voice_settings } = await response.json();
+      await startSession({ 
+        signedUrl: signed_url,
+        voiceSettings: {
+          voiceId: voice_settings.voice_id,
+          stability: voice_settings.stability,
+          similarityBoost: voice_settings.similarity_boost,
+          style: voice_settings.style,
+          speakerBoost: voice_settings.speaker_boost
+        }
+      });
     } catch (err) {
       setVoiceError('Voice session failed to start. Please try again.');
       console.error('Voice session error:', err);

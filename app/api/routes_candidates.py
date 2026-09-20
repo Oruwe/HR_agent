@@ -20,11 +20,23 @@ async def get_elevenlabs_token():
         client = ElevenLabs(api_key=settings.elevenlabs_api_key)
         response = client.convai.get_signed_url(
             agent_id=settings.elevenlabs_agent_id,
-            expires_in=3600  # 1 hour expiry
+            expires_in=3600,  # 1 hour expiry
+            voice_id=settings.elevenlabs_voice_id,
+            stability=settings.elevenlabs_stability,
+            similarity_boost=settings.elevenlabs_similarity_boost,
+            style=settings.elevenlabs_style,
+            speaker_boost=settings.elevenlabs_speaker_boost
         )
         return {
             "signed_url": response.url,
-            "expires_at": int(time.time()) + 3600
+            "expires_at": int(time.time()) + 3600,
+            "voice_settings": {
+                "voice_id": settings.elevenlabs_voice_id,
+                "stability": settings.elevenlabs_stability,
+                "similarity_boost": settings.elevenlabs_similarity_boost,
+                "style": settings.elevenlabs_style,
+                "speaker_boost": settings.elevenlabs_speaker_boost
+            }
         }
     except Exception as e:
         raise HTTPException(

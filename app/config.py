@@ -181,6 +181,11 @@ class Settings(BaseModel):
     # -- ElevenLabs voice AI ----------------------------------------------------
     elevenlabs_api_key: str = ""
     elevenlabs_agent_id: str = ""
+    elevenlabs_voice_id: str = ""
+    elevenlabs_stability: float = Field(default=0.5, ge=0.0, le=1.0)
+    elevenlabs_similarity_boost: float = Field(default=0.75, ge=0.0, le=1.0)
+    elevenlabs_style: float = Field(default=0.0, ge=0.0, le=1.0)
+    elevenlabs_speaker_boost: bool = True
 
     # -- telemetry ------------------------------------------------------------
     langfuse_public_key: str = ""
@@ -278,6 +283,11 @@ def load_settings() -> Settings:
         deepgram_api_key=_env("DEEPGRAM_API_KEY"),
         elevenlabs_api_key=_env("ELEVENLABS_API_KEY"),
         elevenlabs_agent_id=_env("ELEVENLABS_AGENT_ID"),
+        elevenlabs_voice_id=_env("ELEVENLABS_VOICE_ID"),
+        elevenlabs_stability=_env_float("ELEVENLABS_STABILITY", 0.5),
+        elevenlabs_similarity_boost=_env_float("ELEVENLABS_SIMILARITY_BOOST", 0.75),
+        elevenlabs_style=_env_float("ELEVENLABS_STYLE", 0.0),
+        elevenlabs_speaker_boost=_env("ELEVENLABS_SPEAKER_BOOST", "true").lower() not in {"0", "false", "no"},
         langfuse_public_key=_env("LANGFUSE_PUBLIC_KEY"),
         langfuse_secret_key=_env("LANGFUSE_SECRET_KEY"),
         langfuse_host=_env("LANGFUSE_HOST", "https://cloud.langfuse.com"),
