@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: hr-talent-evaluator
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: HRTE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hr-talent-evaluator-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: hr-talent-evaluator-redis
+          property: connectionString
+      - key: LIVEKIT_URL
+        value: wss://livekit.example.com
+      - key: LIVEKIT_API_KEY
+        value: ${LIVEKIT_API_KEY}
+      - key: LIVEKIT_API_SECRET
+        value: ${LIVEKIT_API_SECRET}
+      - key: GOOGLE_API_KEY
+        value: ${GOOGLE_API_KEY}
+      - key: DEEPGRAM_API_KEY
+        value: ${DEEPGRAM_API_KEY}
+      - key: ELEVENLABS_API_KEY
+        value: ${ELEVENLABS_API_KEY}
+      - key: ELEVENLABS_AGENT_ID
+        value: ${ELEVENLABS_AGENT_ID}
+      - key: ELEVENLABS_VOICE_ID
+        value: ${ELEVENLABS_VOICE_ID}
+      - key: LANGFUSE_PUBLIC_KEY
+        value: ${LANGFUSE_PUBLIC_KEY}
+      - key: LANGFUSE_SECRET_KEY
+        value: ${LANGFUSE_SECRET_KEY}
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - key: MOSS_PROJECT_ID
+        value: ${MOSS_PROJECT_ID}
+      - key: MOSS_PROJECT_KEY
+        value: ${MOSS_PROJECT_KEY}
+      - key: QDRANT_URL
+        value: ${QDRANT_URL}
+      - key: QDRANT_API_KEY
+        value: ${QDRANT_API_KEY}
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+databases:
+  - name: hr-talent-evaluator-db
+    databaseName: hr_talent_evaluator
+    user: hr_talent_evaluator
+    plan: free
+
+redis:
+  - name: hr-talent-evaluator-redis
+    plan: free

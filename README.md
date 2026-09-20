@@ -622,4 +622,70 @@ for the two items marked PARTIAL for reasons specific to this sandboxed
 environment (no reachable Deepgram endpoint, no Docker daemon) rather than
 missing implementation â€” and the one item marked BLOCKED, which was blocked
 by missing input files rather than by anything this repository could have
-done differently.
+done differently.# HR Talent Evaluator
+
+AI-powered voice interview assistant for technical hiring.
+
+## Features
+
+- Real-time voice conversation with candidates
+- Automatic speech-to-text transcription
+- AI-powered evaluation and feedback
+- Configurable voice personalities
+- Detailed analytics and reporting
+
+## Deployment
+
+### Render
+
+1. Fork this repository
+2. Create a new Render service
+3. Connect your GitHub repository
+4. Add required environment variables
+5. Deploy!
+
+Required environment variables:
+
+- `LIVEKIT_URL` - LiveKit WebRTC server URL
+- `LIVEKIT_API_KEY` - LiveKit API key
+- `LIVEKIT_API_SECRET` - LiveKit API secret
+- `GOOGLE_API_KEY` - Google Cloud API key
+- `DEEPGRAM_API_KEY` - Deepgram API key
+- `ELEVENLABS_API_KEY` - ElevenLabs API key
+- `ELEVENLABS_AGENT_ID` - ElevenLabs agent ID
+- `ELEVENLABS_VOICE_ID` - ElevenLabs voice ID
+- `LANGFUSE_PUBLIC_KEY` - Langfuse public key
+- `LANGFUSE_SECRET_KEY` - Langfuse secret key
+- `OTEL_EXPORTER_OTLP_ENDPOINT` - OpenTelemetry endpoint
+- `MOSS_PROJECT_ID` - Moss project ID
+- `MOSS_PROJECT_KEY` - Moss project key
+- `QDRANT_URL` - Qdrant vector database URL
+- `QDRANT_API_KEY` - Qdrant API key
+
+## Development
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL
+- Redis
+
+### Setup
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   cd frontend && npm install
+   ```
+3. Set up environment variables
+4. Run the development server:
+   ```bash
+   uvicorn app.main:app --reload
+   cd frontend && npm run dev
+   ```
+
+## License
+
+MIT
